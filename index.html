@@ -215,47 +215,44 @@
     let activeDormerId = null, projectName = '', sections = [], lastProfile = 'tuff', pairings = [];
 
     function loadFromStorage() {
-      const savedProject = localStorage.getItem('roofProject');
-      if (savedProject) {
-        try {
-          const data = JSON.parse(savedProject);
-          projectName = data.projectName || '';
-          document.getElementById('project-name').value = projectName;
-          if (data.sections && data.sections.length > 0) {
-            sections = data.sections;
-            lastProfile = sections[0].profile || 'tuff';
-            sections.forEach(renderSection);
-            return true;
-          }
-        } catch (e) {
-          console.error('Error loading saved project:', e);
-        }
+  const savedProject = localStorage.getItem('roofProject');
+  if (savedProject) {
+    try {
+      const data = JSON.parse(savedProject);
+      projectName = data.projectName || '';
+      document.getElementById('project-name').value = projectName;
+      if (data.sections && data.sections.length > 0) {
+        sections = data.sections;
+        lastProfile = sections[0].profile || 'tuff';
+        sections.forEach(renderSection);
+        return true;
       }
-      return false;
+    } catch (e) {
+      console.error('Error loading saved project:', e);
     }
+  }
+  return false;
+}
+
 function startNewProject() {
   if (confirm('Start a completely new project? All unsaved changes will be lost.')) {
     localStorage.removeItem('roofProject');
     window.location.href = 'https://tom-smsupply.github.io/optimized-roof-calculator/';
   }
+}
 
+function saveToStorage() {
+  localStorage.setItem('roofProject', JSON.stringify({ projectName, sections }));
+}
 
-
-    }
-
-    function saveToStorage() {
-      localStorage.setItem('roofProject', JSON.stringify({ projectName, sections }));
-    }
-
-   function switchToStandard() {
+function switchToStandard() {
   window.location.href = 'https://tom-smsupply.github.io/Roof-calculator/';
 }
 
-
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      window.deferredPrompt = e;
-    });
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  window.deferredPrompt = e;
+});
 
     function calculate(s) {
       const cov = parseFloat(s.coverage)||0, r = parseFloat(s.ridge)||0, e = parseFloat(s.eave)||0, h = parseFloat(s.height)||0, fold = parseFloat(s.eaveFold)||0;
