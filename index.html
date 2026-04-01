@@ -57,7 +57,7 @@
         <button onclick="document.getElementById('help-modal').classList.remove('hidden')" class="bg-slate-200 text-slate-700 px-4 py-2 rounded-xl text-sm font-semibold">How to Use</button>
         <button onclick="validateAndSave()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-semibold">Save</button>
         <button onclick="sendToOffice()" class="bg-violet-600 text-white px-4 py-2 rounded-xl text-sm font-semibold">Send to Office</button>
-        <button onclick="if(confirm('Start a completely new project? All unsaved changes will be lost.')) window.location.reload();" class="bg-red-600 text-white px-4 py-2 rounded-xl text-sm font-semibold">Start New</button>
+        <button onclick="startNewProject()" class="bg-red-600 text-white px-4 py-2 rounded-xl text-sm font-semibold">Start New</button>
         <button onclick="window.print()" class="bg-slate-800 text-white px-4 py-2 rounded-xl text-sm font-semibold">Print/PDF</button>
       </div>
     </div>
@@ -227,6 +227,12 @@
         }
       }
       return false;
+      function startNewProject() {
+  if (confirm('Start a completely new project? All unsaved changes will be lost.')) {
+    localStorage.removeItem('roofProject');
+    window.location.reload();
+  }
+}
     }
 
     function saveToStorage() {
@@ -924,19 +930,22 @@
       updateUI(s.id);
     }
 
-    // Initialize
-    if (window.__SAVED_PROJECT__) {
-      projectName = window.__SAVED_PROJECT__.projectName;
-      document.getElementById('project-name').value = projectName;
-      sections = window.__SAVED_PROJECT__.sections;
-      pairings = window.__SAVED_PROJECT__.pairings || [];
-      if (sections.length > 0) lastProfile = sections[0].profile || 'tuff';
-      sections.forEach(renderSection);
-      renderPairings();
-    } else if (!loadFromStorage()) {
-      addSection();
-    }
-    lucide.createIcons();
+   // Initialize
+if (window.__SAVED_PROJECT__) {
+  // Loading from a saved HTML file
+  projectName = window.__SAVED_PROJECT__.projectName;
+  document.getElementById('project-name').value = projectName;
+  sections = window.__SAVED_PROJECT__.sections;
+  pairings = window.__SAVED_PROJECT__.pairings || [];
+  if (sections.length > 0) lastProfile = sections[0].profile || 'tuff';
+  sections.forEach(renderSection);
+  renderPairings();
+} else {
+  // Fresh start - don't load from localStorage for optimizer
+  // localStorage is only used for transferring data FROM the standard calculator
+  addSection();
+}
+lucide.createIcons();
   </script>
 </body>
 </html>
