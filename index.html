@@ -935,19 +935,25 @@
       updateUI(s.id);
     }
 
-   // Initialize
+// Initialize
 if (window.__SAVED_PROJECT__) {
-  // Loading from a saved HTML file
+  // Clear any pre-rendered sections from saved HTML
+  document.getElementById('sections-container').innerHTML = '';
+  
   projectName = window.__SAVED_PROJECT__.projectName;
   document.getElementById('project-name').value = projectName;
   sections = window.__SAVED_PROJECT__.sections;
   pairings = window.__SAVED_PROJECT__.pairings || [];
   if (sections.length > 0) lastProfile = sections[0].profile || 'tuff';
-  sections.forEach(renderSection);
+  sections.forEach(s => {
+    renderSection(s);
+    // Restore height mode (show run input if it was used)
+    if (s.heightMode === 'calculated') {
+      switchHeightMode(s.id, 'calculated');
+    }
+  });
   renderPairings();
 } else {
-  // Fresh start - don't load from localStorage for optimizer
-  // localStorage is only used for transferring data FROM the standard calculator
   addSection();
 }
 lucide.createIcons();
