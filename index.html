@@ -146,41 +146,46 @@
 
   </div>
 
-  <!-- Help Modal -->
-  <div id="help-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal-overlay">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-      <div class="p-6">
-        <h2 class="text-2xl font-bold mb-4 text-emerald-800">How to Use the Waste Optimizer</h2>
-        <div class="space-y-4 text-slate-700">
-          <p>The Waste Optimizer helps you reduce material waste by combining panels from opposing roof sections.</p>
-          
-          <h3 class="font-bold text-lg mt-6">How It Works</h3>
-          <p>When you cut a panel at an angle, the offcut can be used on an opposing section instead of being wasted.</p>
-          <ul class="list-disc pl-5 space-y-1">
-            <li><strong>Right config</strong> sections pair with <strong>Left config</strong> sections</li>
-            <li><strong>Both config</strong> sections pair with other <strong>Both config</strong> sections</li>
-            <li>The longest angled panel from one section combines with the shortest from the opposing section</li>
-          </ul>
-
-          <h3 class="font-bold text-lg mt-6">Steps</h3>
-          <ol class="list-decimal pl-5 space-y-1">
-            <li>Enter all your roof sections as normal</li>
-            <li>Set the maximum panel length your supplier can provide</li>
-            <li>Add pairings between compatible opposing sections</li>
-            <li>View the optimized cut list and waste savings</li>
-          </ol>
-
-          <h3 class="font-bold text-lg mt-6">Section Compatibility</h3>
-          <ul class="list-disc pl-5 space-y-1">
-            <li><strong>Right + Left:</strong> Angled panels can be combined</li>
-            <li><strong>Both + Both:</strong> Left angles pair with right angles from opposing section</li>
-            <li><strong>Both + Right + Left:</strong> If no "Both" available, a "Both" section needs two pairings</li>
-          </ul>
+ <div id="help-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal-overlay">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+    <div class="p-6">
+      <h2 class="text-2xl font-bold mb-4 text-emerald-800">How to Use the Waste Optimizer</h2>
+      <div class="space-y-4 text-slate-700">
+        
+        <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <h3 class="font-bold text-blue-800 mb-2">New to the Roof Calculator?</h3>
+          <p class="text-blue-700">Please read the instructions in the <a href="https://tom-smsupply.github.io/Roof-calculator/" class="underline font-bold">Standard Calculator</a> first to learn how to enter roof sections, measurements, and profiles.</p>
         </div>
-        <button onclick="document.getElementById('help-modal').classList.add('hidden')" class="mt-8 w-full bg-emerald-600 text-white py-3 rounded-xl font-bold">Got it!</button>
+
+        <h3 class="font-bold text-lg mt-6">What is the Waste Optimizer?</h3>
+        <p>The Waste Optimizer helps you reduce material waste by combining panels from opposing roof sections. When you cut a panel at an angle, the offcut can be used on an opposing section instead of being wasted.</p>
+        
+        <h3 class="font-bold text-lg mt-6">How It Works</h3>
+        <ul class="list-disc pl-5 space-y-1">
+          <li><strong>Right config</strong> sections pair with <strong>Left config</strong> sections</li>
+          <li><strong>Both config</strong> sections pair with other <strong>Both config</strong> sections</li>
+          <li>The longest angled panel from one section combines with the shortest from the opposing section</li>
+        </ul>
+
+        <h3 class="font-bold text-lg mt-6">Steps</h3>
+        <ol class="list-decimal pl-5 space-y-1">
+          <li>Enter all your roof sections (same as the standard calculator)</li>
+          <li>Set the maximum panel length your supplier can provide</li>
+          <li>Add pairings between compatible opposing sections</li>
+          <li>View the optimized cut list and waste savings</li>
+        </ol>
+
+        <h3 class="font-bold text-lg mt-6">Section Compatibility</h3>
+        <ul class="list-disc pl-5 space-y-1">
+          <li><strong>Right + Left:</strong> Angled panels can be combined</li>
+          <li><strong>Both + Both:</strong> Left angles pair with right angles from opposing section</li>
+          <li><strong>Both + Right + Left:</strong> If no "Both" available, a "Both" section needs two pairings</li>
+        </ul>
       </div>
+      <button onclick="document.getElementById('help-modal').classList.add('hidden')" class="mt-8 w-full bg-emerald-600 text-white py-3 rounded-xl font-bold">Got it!</button>
     </div>
   </div>
+</div> 
 
   <!-- Dormer Modal -->
   <div id="dormer-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal-overlay">
