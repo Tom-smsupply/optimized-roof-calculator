@@ -617,6 +617,8 @@ window.addEventListener('beforeinstallprompt', (e) => {
           .sort((a, b) => b.longSide - a.longSide);
         let angledB = dataB.panelData.filter(panel => panel.type === 'angled' && panel.angleSide === sideB)
           .sort((a, b) => a.shortSide - b.shortSide);
+        console.log('Section A angled panels:', angledA.map(p => ({long: p.longSide, short: p.shortSide})));
+console.log('Section B angled panels:', angledB.map(p => ({long: p.longSide, short: p.shortSide})));
 
         const pairCount = Math.min(angledA.length, angledB.length);
         for (let i = 0; i < pairCount; i++) {
