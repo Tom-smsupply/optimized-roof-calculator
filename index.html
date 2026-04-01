@@ -232,11 +232,13 @@
         }
       }
       return false;
-      function startNewProject() {
+function startNewProject() {
   if (confirm('Start a completely new project? All unsaved changes will be lost.')) {
     localStorage.removeItem('roofProject');
-    window.location.reload();
+    // Redirect to the live site instead of reloading the saved file
+    window.location.href = 'https://tom-smsupply.github.io/optimized-roof-calculator/';
   }
+}
 }
     }
 
