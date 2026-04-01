@@ -4,8 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=5.0">
   <title>Summit Metal Supply Roof Calculator - Waste Optimizer</title>
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#1e40af">
+  <meta name="theme-color" content="#059669">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -20,7 +19,6 @@
     .input-field:focus { border-color: #3b82f6; outline: 2px solid #dbeafe; }
     .input-field:disabled { background-color: #f1f5f9; color: #94a3b8; cursor: not-allowed; }
     .section-label { background: white; border: 3px solid #059669; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1); font-size: 2.25rem; font-weight: 900; letter-spacing: -2px; padding: 14px 32px; border-radius: 9999px; min-width: 180px; text-align: center; }
-    #install-banner { display: none; }
     @media (max-width: 768px) { .section-label { font-size: 1.5rem; padding: 8px 20px; min-width: 100px; } svg, table { max-width: 100% !important; height: auto; } }
     .print-only { display: none; }
     @media print { .no-print { display: none !important; } .print-only { display: block !important; } #summary-container { page-break-after: always; break-after: page; } }
@@ -64,7 +62,7 @@
       </div>
     </div>
 
-    <!-- Standard Summary (same as original) -->
+    <!-- Standard Summary -->
     <div id="summary-container" class="mb-8 bg-emerald-900 text-white rounded-xl p-4 md:p-6 shadow-lg">
       <h2 class="text-xl font-bold mb-6 flex items-center gap-2"><i data-lucide="calculator"></i> Project Totals (Standard)</h2>
       <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -105,9 +103,7 @@
         </div>
       </div>
 
-      <div id="pairings-list" class="space-y-3 mb-4">
-        <!-- Pairings will be added here -->
-      </div>
+      <div id="pairings-list" class="space-y-3 mb-4"></div>
 
       <button onclick="addPairing()" class="bg-emerald-100 text-emerald-700 px-4 py-2 rounded-lg font-semibold hover:bg-emerald-200 transition flex items-center gap-2">
         <i data-lucide="plus"></i> Add Pairing
@@ -134,7 +130,7 @@
           <p id="opt-sqft-saved" class="text-sm text-emerald-200"></p>
         </div>
         <div class="bg-white/20 p-4 rounded-lg">
-          <p class="text-emerald-100 text-xs uppercase font-black">Waste Reduction</p>
+          <p class="text-emerald-100 text-xs uppercase font-black">Waste</p>
           <p id="opt-waste-reduction" class="text-3xl font-bold">0%</p>
         </div>
       </div>
@@ -186,7 +182,7 @@
     </div>
   </div>
 
-  <!-- Dormer Modal (same as original) -->
+  <!-- Dormer Modal -->
   <div id="dormer-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal-overlay">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
       <div class="p-4 border-b bg-slate-50 flex justify-between items-center"><h3 class="font-bold">Dormer Settings (Inches)</h3><button onclick="closeDormerModal()">×</button></div>
@@ -213,7 +209,6 @@
   <script>
     let activeDormerId = null, projectName = '', sections = [], lastProfile = 'tuff', pairings = [];
 
-    // Load from localStorage if available
     function loadFromStorage() {
       const savedProject = localStorage.getItem('roofProject');
       if (savedProject) {
@@ -234,12 +229,10 @@
       return false;
     }
 
-    // Save to localStorage
     function saveToStorage() {
       localStorage.setItem('roofProject', JSON.stringify({ projectName, sections }));
     }
 
-    // Switch back to standard calculator
     function switchToStandard() {
       saveToStorage();
       window.location.href = 'calculator.html';
@@ -250,159 +243,157 @@
       window.deferredPrompt = e;
     });
 
-function calculate(s) {
-  const cov = parseFloat(s.coverage)||0, r = parseFloat(s.ridge)||0, e = parseFloat(s.eave)||0, h = parseFloat(s.height)||0, fold = parseFloat(s.eaveFold)||0;
-  if (cov <= 0 || (r <= 0 && e <= 0)) return null;
-  const maxW = Math.max(r, e), totalP = Math.ceil(maxW / cov), data = [];
-  const hDiff = Math.abs(r - e), slope = hDiff > 0 ? h / hDiff : 0;
+    function calculate(s) {
+      const cov = parseFloat(s.coverage)||0, r = parseFloat(s.ridge)||0, e = parseFloat(s.eave)||0, h = parseFloat(s.height)||0, fold = parseFloat(s.eaveFold)||0;
+      if (cov <= 0 || (r <= 0 && e <= 0)) return null;
+      const maxW = Math.max(r, e), totalP = Math.ceil(maxW / cov), data = [];
+      const hDiff = Math.abs(r - e), slope = hDiff > 0 ? h / hDiff : 0;
 
-  // For 'both' (centered gable): pre-compute the flat zone boundaries
-  const minRE = Math.min(r, e);
-  const flatStart = (maxW - minRE) / 2;
-  const flatEnd = flatStart + minRE;
-  // For 'both' config, each side's slope is based on half the horizontal difference
-  const bothSlope = flatStart > 0 ? h / flatStart : 0;
+      const minRE = Math.min(r, e);
+      const flatStart = (maxW - minRE) / 2;
+      const flatEnd = flatStart + minRE;
+      const bothSlope = flatStart > 0 ? h / flatStart : 0;
 
-  for (let i = 0; i < totalP; i++) {
-    let startX, endX;
-    if (s.config === 'left') { startX = maxW - ((i + 1) * cov); endX = maxW - (i * cov); }
-    else if (s.config === 'both') { startX = (maxW / 2) - ((totalP / 2 - i) * cov); endX = startX + cov; }
-    else { startX = i * cov; endX = (i + 1) * cov; }
+      for (let i = 0; i < totalP; i++) {
+        let startX, endX;
+        if (s.config === 'left') { startX = maxW - ((i + 1) * cov); endX = maxW - (i * cov); }
+        else if (s.config === 'both') { startX = (maxW / 2) - ((totalP / 2 - i) * cov); endX = startX + cov; }
+        else { startX = i * cov; endX = (i + 1) * cov; }
 
-    let base;
-    if (s.config === 'both') {
-      if (endX <= flatStart) {
-        const distIntoAngle = flatStart - endX;
-        base = h - (distIntoAngle * bothSlope);
-      } else if (startX >= flatEnd) {
-        const distIntoAngle = startX - flatEnd;
-        base = h - (distIntoAngle * bothSlope);
-      } else {
-        base = h;
+        let base;
+        if (s.config === 'both') {
+          if (endX <= flatStart) {
+            const distIntoAngle = flatStart - endX;
+            base = h - (distIntoAngle * bothSlope);
+          } else if (startX >= flatEnd) {
+            const distIntoAngle = startX - flatEnd;
+            base = h - (distIntoAngle * bothSlope);
+          } else {
+            base = h;
+          }
+          base = Math.max(0, base);
+        } else if (s.config === 'left') {
+          base = endX < (maxW - Math.min(r,e)) ? h - ((maxW - Math.min(r,e) - endX) * slope) : h;
+        } else {
+          base = startX < Math.min(r,e) ? h : h - ((startX - Math.min(r,e)) * slope);
+        }
+
+        if (s.hasDormer) {
+          const d = s.dormer, dR = d.left + d.width;
+          const effectiveStartX = Math.max(0, startX);
+          if (effectiveStartX >= d.left && endX <= dR) {
+            if (d.isShed) {
+              if (d.bottom > 0) {
+                const dormerBottomHeight = h - d.bottom;
+                const underLength = Math.max(0, base - dormerBottomHeight);
+                if (underLength > 0) {
+                  data.push({ len: Math.ceil(underLength + fold), type: 'under', xPos: startX });
+                }
+              }
+              if (d.top > 0) {
+                const dormerTopHeight = h - d.top;
+                const overLength = Math.max(0, base - dormerTopHeight);
+                if (overLength > 0) {
+                  data.push({ len: Math.ceil(overLength + fold), type: 'over', xPos: startX });
+                }
+              }
+            } else {
+              data.push({ len: Math.ceil(d.bottom + fold), type: 'under', xPos: startX });
+              const pH = h - d.bottom - d.top, mid = d.left + d.width / 2;
+              const getDH = (x) => Math.max(0, pH * (1 - Math.abs(x - mid) / (d.width / 2)));
+              const minDormerHeight = Math.min(getDH(startX), getDH(endX));
+              data.push({ len: Math.ceil(d.top + (pH - minDormerHeight)), type: 'over', xPos: startX });
+            }
+            continue;
+          }
+        }
+        data.push({ len: Math.ceil(Math.max(0, base + fold)), type: 'standard', xPos: startX });
       }
-      base = Math.max(0, base);
-    } else if (s.config === 'left') {
-      base = endX < (maxW - Math.min(r,e)) ? h - ((maxW - Math.min(r,e) - endX) * slope) : h;
-    } else {
-      base = startX < Math.min(r,e) ? h : h - ((startX - Math.min(r,e)) * slope);
+      return { panelData: data, maxW, coverage: cov };
     }
 
-    if (s.hasDormer) {
-      const d = s.dormer, dR = d.left + d.width;
-      const effectiveStartX = Math.max(0, startX);
-      if (effectiveStartX >= d.left && endX <= dR) {
-        if (d.isShed) {
-          if (d.bottom > 0) {
-            const dormerBottomHeight = h - d.bottom;
-            const underLength = Math.max(0, base - dormerBottomHeight);
-            if (underLength > 0) {
-              data.push({ len: Math.ceil(underLength + fold), type: 'under', xPos: startX });
-            }
+    function calculateWithShortSide(s) {
+      const cov = parseFloat(s.coverage)||0, r = parseFloat(s.ridge)||0, e = parseFloat(s.eave)||0, h = parseFloat(s.height)||0, fold = parseFloat(s.eaveFold)||0;
+      if (cov <= 0 || (r <= 0 && e <= 0)) return null;
+      const maxW = Math.max(r, e), totalP = Math.ceil(maxW / cov), data = [];
+      const hDiff = Math.abs(r - e), slope = hDiff > 0 ? h / hDiff : 0;
+
+      const minRE = Math.min(r, e);
+      const flatStart = (maxW - minRE) / 2;
+      const flatEnd = flatStart + minRE;
+      const bothSlope = flatStart > 0 ? h / flatStart : 0;
+
+      for (let i = 0; i < totalP; i++) {
+        let startX, endX;
+        if (s.config === 'left') { startX = maxW - ((i + 1) * cov); endX = maxW - (i * cov); }
+        else if (s.config === 'both') { startX = (maxW / 2) - ((totalP / 2 - i) * cov); endX = startX + cov; }
+        else { startX = i * cov; endX = (i + 1) * cov; }
+
+        let base, isAngled = false, angleSide = null;
+        
+        if (s.config === 'both') {
+          if (endX <= flatStart) {
+            const distIntoAngle = flatStart - endX;
+            base = h - (distIntoAngle * bothSlope);
+            isAngled = true;
+            angleSide = 'left';
+          } else if (startX >= flatEnd) {
+            const distIntoAngle = startX - flatEnd;
+            base = h - (distIntoAngle * bothSlope);
+            isAngled = true;
+            angleSide = 'right';
+          } else {
+            base = h;
           }
-          if (d.top > 0) {
-            const dormerTopHeight = h - d.top;
-            const overLength = Math.max(0, base - dormerTopHeight);
-            if (overLength > 0) {
-              data.push({ len: Math.ceil(overLength + fold), type: 'over', xPos: startX });
-            }
+          base = Math.max(0, base);
+        } else if (s.config === 'left') {
+          if (endX < (maxW - Math.min(r,e))) {
+            base = h - ((maxW - Math.min(r,e) - endX) * slope);
+            isAngled = true;
+            angleSide = 'left';
+          } else {
+            base = h;
           }
         } else {
-          data.push({ len: Math.ceil(d.bottom + fold), type: 'under', xPos: startX });
-          const pH = h - d.bottom - d.top, mid = d.left + d.width / 2;
-          const getDH = (x) => Math.max(0, pH * (1 - Math.abs(x - mid) / (d.width / 2)));
-          const minDormerHeight = Math.min(getDH(startX), getDH(endX));
-          data.push({ len: Math.ceil(d.top + (pH - minDormerHeight)), type: 'over', xPos: startX });
+          if (startX >= Math.min(r,e)) {
+            base = h - ((startX - Math.min(r,e)) * slope);
+            isAngled = true;
+            angleSide = 'right';
+          } else {
+            base = h;
+          }
         }
-        continue;
+
+        let shortSide = base;
+        if (isAngled && base < h) {
+          if (s.config === 'both') {
+            shortSide = Math.max(0, base - (cov * bothSlope));
+          } else {
+            shortSide = Math.max(0, base - (cov * slope));
+          }
+        }
+
+        if (s.hasDormer) {
+          const d = s.dormer, dR = d.left + d.width;
+          const effectiveStartX = Math.max(0, startX);
+          if (effectiveStartX >= d.left && endX <= dR) {
+            continue;
+          }
+        }
+
+        const longSide = Math.ceil(Math.max(0, base + fold));
+        const shortSideCalc = Math.ceil(Math.max(0, shortSide + fold));
+
+        data.push({ 
+          longSide: longSide, 
+          shortSide: isAngled ? shortSideCalc : longSide,
+          type: isAngled ? 'angled' : 'full',
+          angleSide: angleSide,
+          xPos: startX 
+        });
       }
+      return { panelData: data, maxW, coverage: cov };
     }
-    data.push({ len: Math.ceil(Math.max(0, base + fold)), type: 'standard', xPos: startX });
-  }
-  return { panelData: data, maxW, coverage: cov };
-}
-
-// Calculate with short side information for optimization
-function calculateWithShortSide(s) {
-  const cov = parseFloat(s.coverage)||0, r = parseFloat(s.ridge)||0, e = parseFloat(s.eave)||0, h = parseFloat(s.height)||0, fold = parseFloat(s.eaveFold)||0;
-  if (cov <= 0 || (r <= 0 && e <= 0)) return null;
-  const maxW = Math.max(r, e), totalP = Math.ceil(maxW / cov), data = [];
-  const hDiff = Math.abs(r - e), slope = hDiff > 0 ? h / hDiff : 0;
-
-  const minRE = Math.min(r, e);
-  const flatStart = (maxW - minRE) / 2;
-  const flatEnd = flatStart + minRE;
-  const bothSlope = flatStart > 0 ? h / flatStart : 0;
-
-  // Calculate panel reduction per coverage width
-  const reductionPerPanel = cov * (s.config === 'both' ? bothSlope : slope);
-
-  for (let i = 0; i < totalP; i++) {
-    let startX, endX;
-    if (s.config === 'left') { startX = maxW - ((i + 1) * cov); endX = maxW - (i * cov); }
-    else if (s.config === 'both') { startX = (maxW / 2) - ((totalP / 2 - i) * cov); endX = startX + cov; }
-    else { startX = i * cov; endX = (i + 1) * cov; }
-
-    let base, isAngled = false, angleSide = null;
-    if (s.config === 'both') {
-      if (endX <= flatStart) {
-        const distIntoAngle = flatStart - endX;
-        base = h - (distIntoAngle * bothSlope);
-        isAngled = true;
-        angleSide = 'left';
-      } else if (startX >= flatEnd) {
-        const distIntoAngle = startX - flatEnd;
-        base = h - (distIntoAngle * bothSlope);
-        isAngled = true;
-        angleSide = 'right';
-      } else {
-        base = h;
-      }
-      base = Math.max(0, base);
-    } else if (s.config === 'left') {
-      if (endX < (maxW - Math.min(r,e))) {
-        base = h - ((maxW - Math.min(r,e) - endX) * slope);
-        isAngled = true;
-        angleSide = 'left';
-      } else {
-        base = h;
-      }
-    } else {
-      if (startX >= Math.min(r,e)) {
-        base = h - ((startX - Math.min(r,e)) * slope);
-        isAngled = true;
-        angleSide = 'right';
-      } else {
-        base = h;
-      }
-    }
-
-    // Calculate short side for angled panels
-    let shortSide = base;
-    if (isAngled && base < h) {
-      shortSide = Math.max(0, base - reductionPerPanel);
-    }
-
-    // Skip dormer logic for now in optimization calc - use standard calc result
-    if (s.hasDormer) {
-      const d = s.dormer, dR = d.left + d.width;
-      const effectiveStartX = Math.max(0, startX);
-      if (effectiveStartX >= d.left && endX <= dR) {
-        // Dormer panels - not included in optimization pairing
-        continue;
-      }
-    }
-
-    data.push({ 
-      longSide: Math.ceil(Math.max(0, base + fold)), 
-      shortSide: Math.ceil(Math.max(0, shortSide + fold)),
-      type: isAngled ? 'angled' : 'full',
-      angleSide: angleSide,
-      xPos: startX 
-    });
-  }
-  return { panelData: data, maxW, coverage: cov };
-}
-
     function updateSummary() {
       let grandP = 0, grandIn = 0, grandSq = 0, actualSq = 0, tRidge = 0, tEave = 0, tVal = 0, tHip = 0, tGable = 0, tEndWall = 0, tSideWall = 0, mechSq = 0;
       sections.forEach(s => {
@@ -420,11 +411,9 @@ function calculateWithShortSide(s) {
               const dormerHeight = h - d.bottom - d.top;
               if (dormerHeight > 0 && d.width > 0) {
                 if (d.isShed) {
-                  const dormerArea = (d.width * dormerHeight) / 144;
-                  roofArea -= dormerArea;
+                  roofArea -= (d.width * dormerHeight) / 144;
                 } else {
-                  const dormerArea = (d.width * dormerHeight) / 2 / 144;
-                  roofArea -= dormerArea;
+                  roofArea -= (d.width * dormerHeight) / 2 / 144;
                 }
               }
             }
@@ -451,8 +440,7 @@ function calculateWithShortSide(s) {
              }
           }
           if (h > 0) {
-            if (s.config === 'both') {
-            } else {
+            if (s.config !== 'both') {
               const sqW = (s.config === 'right' && s.leftAgainstWall) || (s.config === 'left' && s.rightAgainstWall);
               if (sqW) tSideWall += h; else tGable += h;
             }
@@ -464,9 +452,7 @@ function calculateWithShortSide(s) {
               if (d.isShed) {
                 tSideWall += Math.ceil(dormerHeight / 120) * 120;
                 tSideWall += Math.ceil(dormerHeight / 120) * 120;
-                if (d.bottom > 6) {
-                  tEndWall += d.width;
-                }
+                if (d.bottom > 6) tEndWall += d.width;
               } else {
                 const dormerHyp = Math.sqrt(Math.pow((parseFloat(d.width)||0)/2, 2) + dormerHeight*dormerHeight);
                 tVal += Math.ceil(dormerHyp / 120) / 2;
@@ -494,12 +480,9 @@ function calculateWithShortSide(s) {
       document.getElementById('clips-tile').style.display = mechSq > 0 ? '' : 'none';
       document.getElementById('end-wall-tile').style.display = tEndWall > 0 ? '' : 'none';
       document.getElementById('side-wall-tile').style.display = tSideWall > 0 ? '' : 'none';
-
-      // Update optimized summary
       updateOptimizedSummary();
     }
 
-    // Pairing functions
     function addPairing() {
       const id = Date.now();
       pairings.push({ id, sectionA: '', sectionASide: '', sectionB: '', sectionBSide: '' });
@@ -516,14 +499,12 @@ function calculateWithShortSide(s) {
       const pairing = pairings.find(p => p.id === id);
       if (pairing) {
         pairing[field] = value;
-        
-        // Auto-set sides based on config
         if (field === 'sectionA') {
           const section = sections.find(s => s.id == value);
           if (section) {
             if (section.config === 'right') pairing.sectionASide = 'right';
             else if (section.config === 'left') pairing.sectionASide = 'left';
-            else pairing.sectionASide = ''; // Both - needs user selection
+            else pairing.sectionASide = '';
           }
         }
         if (field === 'sectionB') {
@@ -534,7 +515,6 @@ function calculateWithShortSide(s) {
             else pairing.sectionBSide = '';
           }
         }
-        
         renderPairings();
         updateOptimizedSummary();
       }
@@ -564,9 +544,7 @@ function calculateWithShortSide(s) {
                 </select>
               ` : ''}
             </div>
-            
             <div class="text-2xl text-emerald-600 font-bold">↔</div>
-            
             <div class="flex-1 min-w-[200px]">
               <label class="text-xs font-bold text-slate-500">Section B (Opposing)</label>
               <select class="input-field" onchange="updatePairing(${p.id}, 'sectionB', this.value)">
@@ -581,7 +559,6 @@ function calculateWithShortSide(s) {
                 </select>
               ` : ''}
             </div>
-            
             <button onclick="removePairing(${p.id})" class="text-red-500 hover:text-red-700 p-2">
               <i data-lucide="trash-2" class="w-5 h-5"></i>
             </button>
@@ -593,47 +570,33 @@ function calculateWithShortSide(s) {
 
     function updateOptimizedSummary() {
       const maxLength = parseFloat(document.getElementById('max-panel-length').value) || 360;
-      
-      // Get standard totals for comparison
       const stdPanels = parseInt(document.getElementById('total-panels').innerText) || 0;
       const stdLinearFt = parseFloat(document.getElementById('total-linear-ft').innerText) || 0;
       const stdSqFt = parseInt(document.getElementById('total-sq-ft').innerText) || 0;
       const actualSqFt = parseInt(document.getElementById('actual-sq-ft').innerText) || 0;
 
-      // Calculate optimized results
+      let processedSectionIds = new Set();
       let combinedPanels = [];
       let unpairedPanels = [];
-      let pairedSectionIds = new Set();
 
-      // Process each pairing
       pairings.forEach(p => {
         if (!p.sectionA || !p.sectionB) return;
-        
         const sectionA = sections.find(s => s.id == p.sectionA);
         const sectionB = sections.find(s => s.id == p.sectionB);
         if (!sectionA || !sectionB) return;
-
-        pairedSectionIds.add(sectionA.id);
-        pairedSectionIds.add(sectionB.id);
 
         const dataA = calculateWithShortSide(sectionA);
         const dataB = calculateWithShortSide(sectionB);
         if (!dataA || !dataB) return;
 
-        // Get angled panels from each section based on selected sides
-        let angledA = dataA.panelData.filter(panel => {
-          if (panel.type !== 'angled') return false;
-          if (sectionA.config === 'both') return panel.angleSide === p.sectionASide;
-          return true;
-        }).sort((a, b) => b.longSide - a.longSide); // Sort longest first
+        const sideA = sectionA.config === 'both' ? p.sectionASide : sectionA.config;
+        const sideB = sectionB.config === 'both' ? p.sectionBSide : sectionB.config;
 
-        let angledB = dataB.panelData.filter(panel => {
-          if (panel.type !== 'angled') return false;
-          if (sectionB.config === 'both') return panel.angleSide === p.sectionBSide;
-          return true;
-        }).sort((a, b) => a.shortSide - b.shortSide); // Sort shortest first
+        let angledA = dataA.panelData.filter(panel => panel.type === 'angled' && panel.angleSide === sideA)
+          .sort((a, b) => b.longSide - a.longSide);
+        let angledB = dataB.panelData.filter(panel => panel.type === 'angled' && panel.angleSide === sideB)
+          .sort((a, b) => a.shortSide - b.shortSide);
 
-        // Pair longest from A with shortest from B
         const pairCount = Math.min(angledA.length, angledB.length);
         for (let i = 0; i < pairCount; i++) {
           const panelA = angledA[i];
@@ -649,13 +612,11 @@ function calculateWithShortSide(s) {
               sectionB: sectionB.name
             });
           } else {
-            // Can't combine, keep as separate
             unpairedPanels.push({ length: panelA.longSide, section: sectionA.name });
             unpairedPanels.push({ length: panelB.longSide, section: sectionB.name });
           }
         }
 
-        // Handle leftover angled panels
         for (let i = pairCount; i < angledA.length; i++) {
           unpairedPanels.push({ length: angledA[i].longSide, section: sectionA.name });
         }
@@ -663,18 +624,26 @@ function calculateWithShortSide(s) {
           unpairedPanels.push({ length: angledB[i].longSide, section: sectionB.name });
         }
 
-        // Add full-height panels from paired sections
-        dataA.panelData.filter(p => p.type === 'full').forEach(panel => {
-          unpairedPanels.push({ length: panel.longSide, section: sectionA.name });
-        });
-        dataB.panelData.filter(p => p.type === 'full').forEach(panel => {
-          unpairedPanels.push({ length: panel.longSide, section: sectionB.name });
-        });
+        processedSectionIds.add(`${sectionA.id}-${sideA}`);
+        processedSectionIds.add(`${sectionB.id}-${sideB}`);
+
+        if (!processedSectionIds.has(`${sectionA.id}-full`)) {
+          dataA.panelData.filter(panel => panel.type === 'full').forEach(panel => {
+            unpairedPanels.push({ length: panel.longSide, section: sectionA.name });
+          });
+          processedSectionIds.add(`${sectionA.id}-full`);
+        }
+        if (!processedSectionIds.has(`${sectionB.id}-full`)) {
+          dataB.panelData.filter(panel => panel.type === 'full').forEach(panel => {
+            unpairedPanels.push({ length: panel.longSide, section: sectionB.name });
+          });
+          processedSectionIds.add(`${sectionB.id}-full`);
+        }
       });
 
-      // Add panels from unpaired sections
       sections.forEach(s => {
-        if (pairedSectionIds.has(s.id)) return;
+        const hasPairing = pairings.some(p => p.sectionA == s.id || p.sectionB == s.id);
+        if (hasPairing) return;
         const res = calculate(s);
         if (res) {
           res.panelData.forEach(panel => {
@@ -683,92 +652,64 @@ function calculateWithShortSide(s) {
         }
       });
 
-      // Calculate totals
       const optTotalPanels = combinedPanels.length + unpairedPanels.length;
-      const optTotalLinearIn = combinedPanels.reduce((sum, p) => sum + p.length, 0) + 
-                               unpairedPanels.reduce((sum, p) => sum + p.length, 0);
+      const optTotalLinearIn = combinedPanels.reduce((sum, p) => sum + p.length, 0) + unpairedPanels.reduce((sum, p) => sum + p.length, 0);
       const optTotalLinearFt = optTotalLinearIn / 12;
-      
-      // Estimate sq ft (using average coverage)
-      const avgCoverage = sections.length > 0 ? 
-        sections.reduce((sum, s) => sum + parseFloat(s.coverage || 36), 0) / sections.length : 36;
+      const avgCoverage = sections.length > 0 ? sections.reduce((sum, s) => sum + parseFloat(s.coverage || 36), 0) / sections.length : 36;
       const optTotalSqFt = (optTotalLinearIn / 12) * (avgCoverage / 12);
 
-      // Update UI
       document.getElementById('opt-total-panels').innerText = optTotalPanels;
       document.getElementById('opt-total-linear-ft').innerText = optTotalLinearFt.toFixed(1);
       document.getElementById('opt-total-sq-ft').innerText = Math.ceil(optTotalSqFt);
 
-      // Calculate savings
       const panelsSaved = stdPanels - optTotalPanels;
       const linearSaved = stdLinearFt - optTotalLinearFt;
       const sqftSaved = stdSqFt - optTotalSqFt;
-      const wasteReduction = stdSqFt > 0 ? ((stdSqFt - optTotalSqFt) / stdSqFt * 100) : 0;
+      const wastePercent = actualSqFt > 0 ? ((optTotalSqFt / actualSqFt - 1) * 100) : 0;
 
       document.getElementById('opt-panels-saved').innerText = panelsSaved > 0 ? `↓ ${panelsSaved} fewer panels` : '';
       document.getElementById('opt-linear-saved').innerText = linearSaved > 0 ? `↓ ${linearSaved.toFixed(1)} ft saved` : '';
       document.getElementById('opt-sqft-saved').innerText = sqftSaved > 0 ? `↓ ${Math.ceil(sqftSaved)} sq ft saved` : '';
-      document.getElementById('opt-waste-reduction').innerText = wasteReduction > 0 ? `${wasteReduction.toFixed(1)}%` : '0%';
+      document.getElementById('opt-waste-reduction').innerText = wastePercent > 0 ? `${wastePercent.toFixed(1)}%` : '0%';
 
-      // Render cut list
       renderOptimizedCutList(combinedPanels, unpairedPanels);
     }
 
     function renderOptimizedCutList(combinedPanels, unpairedPanels) {
       const container = document.getElementById('optimized-cut-list');
-      
       if (combinedPanels.length === 0 && unpairedPanels.length === 0) {
         container.innerHTML = '<p class="text-emerald-200 italic">Add section pairings above to see optimized cuts</p>';
         return;
       }
 
-      // Group combined panels by length
       const combinedGroups = {};
       combinedPanels.forEach(p => {
         const key = `${p.length}-${p.cutA}-${p.cutB}`;
-        if (!combinedGroups[key]) {
-          combinedGroups[key] = { ...p, qty: 0 };
-        }
+        if (!combinedGroups[key]) combinedGroups[key] = { ...p, qty: 0 };
         combinedGroups[key].qty++;
       });
 
-      // Group unpaired panels by length
       const unpairedGroups = {};
       unpairedPanels.forEach(p => {
-        if (!unpairedGroups[p.length]) {
-          unpairedGroups[p.length] = { length: p.length, qty: 0 };
-        }
+        if (!unpairedGroups[p.length]) unpairedGroups[p.length] = { length: p.length, qty: 0 };
         unpairedGroups[p.length].qty++;
       });
 
       let html = '';
-      
       if (Object.keys(combinedGroups).length > 0) {
-        html += '<div class="mb-4"><h4 class="font-semibold text-emerald-100 mb-2">Combined Panels (cut at angle)</h4>';
-        html += '<div class="grid gap-2">';
+        html += '<div class="mb-4"><h4 class="font-semibold text-emerald-100 mb-2">Combined Panels (cut at angle)</h4><div class="grid gap-2">';
         Object.values(combinedGroups).sort((a, b) => b.length - a.length).forEach(g => {
-          html += `
-            <div class="bg-white/20 rounded px-3 py-2 flex justify-between items-center">
-              <span><strong>${g.qty}×</strong> ${g.length}" <span class="text-emerald-200">(cuts to ${g.cutA}" + ${g.cutB}")</span></span>
-            </div>
-          `;
+          html += `<div class="bg-white/20 rounded px-3 py-2 flex justify-between items-center"><span><strong>${g.qty}×</strong> ${g.length}" <span class="text-emerald-200">(cuts to ${g.cutA}" + ${g.cutB}")</span></span></div>`;
         });
         html += '</div></div>';
       }
-
       if (Object.keys(unpairedGroups).length > 0) {
-        html += '<div><h4 class="font-semibold text-emerald-100 mb-2">Standard Panels</h4>';
-        html += '<div class="grid gap-2">';
+        html += '<div><h4 class="font-semibold text-emerald-100 mb-2">Standard Panels</h4><div class="grid gap-2">';
         Object.values(unpairedGroups).sort((a, b) => b.length - a.length).forEach(g => {
-          html += `
-            <div class="bg-white/10 rounded px-3 py-2 flex justify-between items-center">
-              <span><strong>${g.qty}×</strong> ${g.length}"</span>
-            </div>
-          `;
+          html += `<div class="bg-white/10 rounded px-3 py-2 flex justify-between items-center"><span><strong>${g.qty}×</strong> ${g.length}"</span></div>`;
         });
         html += '</div></div>';
       }
-
       container.innerHTML = html;
     }
 
@@ -795,7 +736,6 @@ function calculateWithShortSide(s) {
         let dX = m + (s.dormer.left * scale);
         if (s.config === 'both') dX = m + (w-2*m-res.maxW*scale)/2 + (s.dormer.left * scale);
         let dY = (h-m) - s.dormer.bottom*hScale, dW = s.dormer.width*scale;
-        
         if (s.dormer.isShed) {
           let dTopY = m + s.dormer.top*hScale;
           dSvg = `<rect x="${dX}" y="${dTopY}" width="${dW}" height="${dY - dTopY}" fill="white" fill-opacity="0.4" stroke="red" stroke-width="2" stroke-dasharray="4"/>`;
@@ -806,8 +746,8 @@ function calculateWithShortSide(s) {
       svg.innerHTML = `<polygon points="${eX},${h-m} ${eX+eW},${h-m} ${rX+rW},${m} ${rX},${m}" fill="#ecfdf5" stroke="#059669" stroke-width="2"/>${pLines}${dSvg}${pLabels}`;
       let summaryMap = [];
       res.panelData.forEach(p => {
-          let existing = summaryMap.find(item => item.len === p.len && item.type === p.type);
-          if (existing) existing.count++; else summaryMap.push({ len: p.len, type: p.type, count: 1 });
+        let existing = summaryMap.find(item => item.len === p.len && item.type === p.type);
+        if (existing) existing.count++; else summaryMap.push({ len: p.len, type: p.type, count: 1 });
       });
       list.innerHTML = `<table class="w-full text-xs"><thead><tr class="bg-slate-50 border-b"><th class="p-2 text-left">Qty</th><th class="p-2 text-right">Len</th></tr></thead><tbody>` +
         summaryMap.map(i => `<tr class="border-b"><td class="p-2 font-bold">${i.count}</td><td class="p-2 text-right font-bold">${i.len}"${i.type!=='standard'?' ('+i.type+')':''}</td></tr>`).join('') + `</tbody></table>`;
@@ -818,12 +758,10 @@ function calculateWithShortSide(s) {
     function switchHeightMode(id, mode) {
       const s = sections.find(x => x.id === id);
       s.heightMode = mode;
-      
       const lengthInput = document.getElementById(`length-input-${id}`);
       const runInput = document.getElementById(`run-input-${id}`);
       const lengthField = lengthInput.querySelector('input');
       const runField = runInput.querySelector('input');
-      
       if (mode === 'direct') {
         lengthInput.style.opacity = '1';
         lengthField.disabled = false;
@@ -836,7 +774,6 @@ function calculateWithShortSide(s) {
         runField.disabled = false;
         calculateHeightFromRun(id);
       }
-      
       updateUI(id);
     }
 
@@ -853,56 +790,34 @@ function calculateWithShortSide(s) {
       const s = sections.find(x => x.id === id);
       const run = parseFloat(s.run) || 0;
       const slope = parseFloat(s.slope) || 0;
-      
-      if (run <= 0 || slope <= 0) {
-        s.height = 0;
-        updateUI(id);
-        return;
-      }
-      
+      if (run <= 0 || slope <= 0) { s.height = 0; updateUI(id); return; }
       const slopeFactor = Math.sqrt(1 + (slope / 12) * (slope / 12));
       s.height = run * slopeFactor;
-      
       updateUI(id);
     }
 
     function updateSlope(id, value) {
       const s = sections.find(x => x.id === id);
       s.slope = parseFloat(value) || 0;
-      
-      if (s.heightMode === 'calculated') {
-        calculateHeightFromRun(id);
-      }
+      if (s.heightMode === 'calculated') calculateHeightFromRun(id);
     }
 
     function addSection() {
       const nextL = String.fromCharCode(65 + sections.length);
       const coverage = lastProfile === 'mechanical' ? 15.75 : 36;
       const s = { 
-        id: Date.now(), 
-        name: nextL, 
-        ridge: '', 
-        eave: '', 
-        height: '', 
-        slope: 6,
-        run: '',
-        heightMode: 'direct',
-        profile: lastProfile, 
-        coverage: coverage, 
-        eaveFold: 0, 
-        config: 'right', 
-        hasDormer: false, 
-        dormer: { left:0, width:0, bottom:0, top:0, isShed: false }, 
-        topAgainstWall:false, 
-        leftAgainstWall:false, 
-        rightAgainstWall:false 
+        id: Date.now(), name: nextL, ridge: '', eave: '', height: '', slope: 6, run: '', heightMode: 'direct',
+        profile: lastProfile, coverage: coverage, eaveFold: 0, config: 'right', 
+        hasDormer: false, dormer: { left:0, width:0, bottom:0, top:0, isShed: false }, 
+        topAgainstWall:false, leftAgainstWall:false, rightAgainstWall:false 
       };
       sections.push(s); 
       renderSection(s);
-      renderPairings(); // Update pairing dropdowns
+      renderPairings();
     }
 
     function validateAndSave() { if (!projectName.trim()) { alert("Please enter a Project Name."); return; } saveProjectAsHTML(); }
+    
     function saveProjectAsHTML() { 
       saveToStorage();
       const data = `<script id="__saved_data__"> window.__SAVED_PROJECT__ = ${JSON.stringify({ projectName, sections, pairings })}; <\/script>`; 
@@ -924,7 +839,6 @@ function calculateWithShortSide(s) {
       if (sections.length > 1) { 
         sections = sections.filter(x => x.id !== id); 
         document.getElementById(`section-${id}`).remove(); 
-        // Remove any pairings that reference this section
         pairings = pairings.filter(p => p.sectionA != id && p.sectionB != id);
         renderPairings();
         updateSummary(); 
@@ -939,19 +853,14 @@ function calculateWithShortSide(s) {
 
     function updateVal(id, f, val) { sections.find(x => x.id === id)[f] = val; updateUI(id); }
     function updateProfile(id, val) {
-        const s = sections.find(x => x.id === id);
-        s.profile = val;
-        s.coverage = (val === 'mechanical') ? 15.75 : 36;
-        lastProfile = val;
-        document.getElementById(`cov-display-${id}`).innerText = s.coverage + '" Coverage';
-        updateUI(id);
+      const s = sections.find(x => x.id === id);
+      s.profile = val;
+      s.coverage = (val === 'mechanical') ? 15.75 : 36;
+      lastProfile = val;
+      document.getElementById(`cov-display-${id}`).innerText = s.coverage + '" Coverage';
+      updateUI(id);
     }
-    function toggleDormer(id, chk) { 
-      const s = sections.find(x => x.id === id); 
-      s.hasDormer = chk; 
-      if (chk) openDormerModal(id); 
-      else updateUI(id); 
-    }
+    function toggleDormer(id, chk) { const s = sections.find(x => x.id === id); s.hasDormer = chk; if (chk) openDormerModal(id); else updateUI(id); }
     function openDormerModal(id) { 
       activeDormerId = id; 
       const s = sections.find(x => x.id === id);
@@ -976,81 +885,43 @@ function calculateWithShortSide(s) {
     function toggleWall(id, f, chk) { sections.find(x => x.id === id)[f] = chk; updateSummary(); }
 
     function renderSection(s) {
-      const div = document.createElement('div'); div.className = "bg-white rounded-xl shadow-sm border border-emerald-200 overflow-hidden mb-8"; div.id = `section-${s.id}`;
+      const div = document.createElement('div'); 
+      div.className = "bg-white rounded-xl shadow-sm border border-emerald-200 overflow-hidden mb-8"; 
+      div.id = `section-${s.id}`;
       div.innerHTML = `
         <div class="p-4 md:p-6 bg-emerald-50 border-b flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
           <input type="text" value="${s.name}" class="section-label" oninput="updateVal(${s.id}, 'name', this.value)">
           <div class="flex flex-wrap items-center gap-2 no-print">
-            <label class="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 bg-white px-2 py-1 rounded border"><input type="checkbox" onchange="toggleDormer(${s.id}, this.checked)"> Dormer</label>
-            <label class="flex items-center gap-1.5 text-[11px] font-bold text-orange-600 bg-white px-2 py-1 rounded border border-orange-100"><input type="checkbox" onchange="toggleWall(${s.id}, 'topAgainstWall', this.checked)"> Top wall</label>
-            <label class="flex items-center gap-1.5 text-[11px] font-bold text-orange-600 bg-white px-2 py-1 rounded border border-orange-100"><input type="checkbox" onchange="toggleWall(${s.id}, 'leftAgainstWall', this.checked)"> Left wall</label>
-            <label class="flex items-center gap-1.5 text-[11px] font-bold text-orange-600 bg-white px-2 py-1 rounded border border-orange-100"><input type="checkbox" onchange="toggleWall(${s.id}, 'rightAgainstWall', this.checked)"> Right wall</label>
+            <label class="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 bg-white px-2 py-1 rounded border"><input type="checkbox" onchange="toggleDormer(${s.id}, this.checked)" ${s.hasDormer ? 'checked' : ''}> Dormer</label>
+            <label class="flex items-center gap-1.5 text-[11px] font-bold text-orange-600 bg-white px-2 py-1 rounded border border-orange-100"><input type="checkbox" onchange="toggleWall(${s.id}, 'topAgainstWall', this.checked)" ${s.topAgainstWall ? 'checked' : ''}> Top wall</label>
+            <label class="flex items-center gap-1.5 text-[11px] font-bold text-orange-600 bg-white px-2 py-1 rounded border border-orange-100"><input type="checkbox" onchange="toggleWall(${s.id}, 'leftAgainstWall', this.checked)" ${s.leftAgainstWall ? 'checked' : ''}> Left wall</label>
+            <label class="flex items-center gap-1.5 text-[11px] font-bold text-orange-600 bg-white px-2 py-1 rounded border border-orange-100"><input type="checkbox" onchange="toggleWall(${s.id}, 'rightAgainstWall', this.checked)" ${s.rightAgainstWall ? 'checked' : ''}> Right wall</label>
             <button onclick="removeSection(${s.id})" class="ml-auto text-slate-400 hover:text-red-500"><i data-lucide="trash-2" class="w-5 h-5"></i></button>
           </div>
         </div>
         <div class="p-4">
           <div class="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4 no-print">
-            <div>
-              <label class="text-[10px] font-black uppercase text-slate-400">Ridge (In)</label>
-              <input type="number" class="input-field" oninput="updateVal(${s.id}, 'ridge', parseFloat(this.value))">
-            </div>
-            <div>
-              <label class="text-[10px] font-black uppercase text-slate-400">Eave (In)</label>
-              <input type="number" class="input-field" oninput="updateVal(${s.id}, 'eave', parseFloat(this.value))">
-            </div>
-            <div id="length-input-${s.id}">
-              <label class="text-[10px] font-black uppercase text-slate-400">Length (In)</label>
-              <input type="number" class="input-field" oninput="updateVal(${s.id}, 'height', parseFloat(this.value)); updateHeightMode(${s.id}, 'direct')" placeholder="Slope length">
-            </div>
-            <div id="slope-input-${s.id}">
-              <label class="text-[10px] font-black uppercase text-slate-400">Slope</label>
-              <div class="flex items-center gap-1">
-                <input type="number" class="input-field flex-1" oninput="updateSlope(${s.id}, this.value)" placeholder="Rise" min="0" step="0.1" value="${s.slope}">
-                <span class="text-slate-400 font-bold text-sm">/12</span>
-              </div>
-            </div>
-            <div id="run-input-${s.id}" style="display:none;">
-              <label class="text-[10px] font-black uppercase text-slate-400">Run (In)</label>
-              <input type="number" class="input-field" oninput="updateVal(${s.id}, 'run', parseFloat(this.value)); calculateHeightFromRun(${s.id})" placeholder="Horizontal distance">
-            </div>
-            <div>
-              <label class="text-[10px] font-black uppercase text-slate-400">Profile</label>
-              <select class="input-field" onchange="updateProfile(${s.id}, this.value)">
-                <option value="tuff" ${s.profile==='tuff'?'selected':''}>Tuff (36")</option>
-                <option value="mechanical" ${s.profile==='mechanical'?'selected':''}>Mech (15.75")</option>
-                <option value="diamond" ${s.profile==='diamond'?'selected':''}>Diamond (36")</option>
-              </select>
-              <p id="cov-display-${s.id}" class="text-[9px] mt-1 text-slate-500 font-bold">${s.coverage}" Coverage</p>
-            </div>
-            <div>
-              <label class="text-[10px] font-black uppercase text-slate-400">Fold (In)</label>
-              <input type="number" class="input-field" oninput="updateVal(${s.id}, 'eaveFold', parseFloat(this.value))">
-            </div>
-            <div>
-              <label class="text-[10px] font-black uppercase text-slate-400">Angle</label>
-              <select class="input-field" onchange="updateVal(${s.id}, 'config', this.value)">
-                <option value="right">Right</option>
-                <option value="left">Left</option>
-                <option value="both">Both</option>
-              </select>
-            </div>
+            <div><label class="text-[10px] font-black uppercase text-slate-400">Ridge (In)</label><input type="number" class="input-field" value="${s.ridge||''}" oninput="updateVal(${s.id}, 'ridge', parseFloat(this.value))"></div>
+            <div><label class="text-[10px] font-black uppercase text-slate-400">Eave (In)</label><input type="number" class="input-field" value="${s.eave||''}" oninput="updateVal(${s.id}, 'eave', parseFloat(this.value))"></div>
+            <div id="length-input-${s.id}"><label class="text-[10px] font-black uppercase text-slate-400">Length (In)</label><input type="number" class="input-field" value="${s.height||''}" oninput="updateVal(${s.id}, 'height', parseFloat(this.value)); updateHeightMode(${s.id}, 'direct')" placeholder="Slope length"></div>
+            <div id="slope-input-${s.id}"><label class="text-[10px] font-black uppercase text-slate-400">Slope</label><div class="flex items-center gap-1"><input type="number" class="input-field flex-1" oninput="updateSlope(${s.id}, this.value)" placeholder="Rise" min="0" step="0.1" value="${s.slope||6}"><span class="text-slate-400 font-bold text-sm">/12</span></div></div>
+            <div id="run-input-${s.id}" style="display:none;"><label class="text-[10px] font-black uppercase text-slate-400">Run (In)</label><input type="number" class="input-field" value="${s.run||''}" oninput="updateVal(${s.id}, 'run', parseFloat(this.value)); calculateHeightFromRun(${s.id})" placeholder="Horizontal distance"></div>
+            <div><label class="text-[10px] font-black uppercase text-slate-400">Profile</label><select class="input-field" onchange="updateProfile(${s.id}, this.value)"><option value="tuff" ${s.profile==='tuff'?'selected':''}>Tuff (36")</option><option value="mechanical" ${s.profile==='mechanical'?'selected':''}>Mech (15.75")</option><option value="diamond" ${s.profile==='diamond'?'selected':''}>Diamond (36")</option></select><p id="cov-display-${s.id}" class="text-[9px] mt-1 text-slate-500 font-bold">${s.coverage}" Coverage</p></div>
+            <div><label class="text-[10px] font-black uppercase text-slate-400">Fold (In)</label><input type="number" class="input-field" value="${s.eaveFold||''}" oninput="updateVal(${s.id}, 'eaveFold', parseFloat(this.value))"></div>
+            <div><label class="text-[10px] font-black uppercase text-slate-400">Angle</label><select class="input-field" onchange="updateVal(${s.id}, 'config', this.value)"><option value="right" ${s.config==='right'?'selected':''}>Right</option><option value="left" ${s.config==='left'?'selected':''}>Left</option><option value="both" ${s.config==='both'?'selected':''}>Both</option></select></div>
           </div>
           <div class="mb-4 p-3 bg-emerald-50 rounded-lg border no-print">
-            <label class="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer">
-              <input type="radio" name="height-mode-${s.id}" value="direct" onchange="switchHeightMode(${s.id}, 'direct')" checked>
-              Use Direct Length Input (slope length)
-            </label>
-            <label class="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer mt-2">
-              <input type="radio" name="height-mode-${s.id}" value="calculated" onchange="switchHeightMode(${s.id}, 'calculated')">
-              Calculate from Run (horizontal distance)
-            </label>
+            <label class="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer"><input type="radio" name="height-mode-${s.id}" value="direct" onchange="switchHeightMode(${s.id}, 'direct')" ${s.heightMode==='direct'?'checked':''}> Use Direct Length Input (slope length)</label>
+            <label class="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer mt-2"><input type="radio" name="height-mode-${s.id}" value="calculated" onchange="switchHeightMode(${s.id}, 'calculated')" ${s.heightMode==='calculated'?'checked':''}> Calculate from Run (horizontal distance)</label>
           </div>
           <div class="grid lg:grid-cols-4 gap-4">
             <div class="lg:col-span-3 bg-emerald-50 rounded-xl border min-h-[300px] flex items-center justify-center p-2"><svg id="svg-${s.id}" viewBox="0 0 800 300" class="w-full h-auto"></svg></div>
             <div id="list-${s.id}" class="border rounded-xl bg-white overflow-hidden"></div>
           </div>
         </div>`;
-      document.getElementById('sections-container').appendChild(div); lucide.createIcons(); updateUI(s.id);
+      document.getElementById('sections-container').appendChild(div); 
+      lucide.createIcons(); 
+      updateUI(s.id);
     }
 
     // Initialize
@@ -1059,9 +930,7 @@ function calculateWithShortSide(s) {
       document.getElementById('project-name').value = projectName;
       sections = window.__SAVED_PROJECT__.sections;
       pairings = window.__SAVED_PROJECT__.pairings || [];
-      if (sections.length > 0) {
-        lastProfile = sections[0].profile || 'tuff';
-      }
+      if (sections.length > 0) lastProfile = sections[0].profile || 'tuff';
       sections.forEach(renderSection);
       renderPairings();
     } else if (!loadFromStorage()) {
