@@ -324,87 +324,97 @@ window.addEventListener('beforeinstallprompt', (e) => {
     }
 
     function calculateWithShortSide(s) {
-      const cov = parseFloat(s.coverage)||0, r = parseFloat(s.ridge)||0, e = parseFloat(s.eave)||0, h = parseFloat(s.height)||0, fold = parseFloat(s.eaveFold)||0;
-      if (cov <= 0 || (r <= 0 && e <= 0)) return null;
-      const maxW = Math.max(r, e), totalP = Math.ceil(maxW / cov), data = [];
-      const hDiff = Math.abs(r - e), slope = hDiff > 0 ? h / hDiff : 0;
+  const cov = parseFloat(s.coverage)||0, r = parseFloat(s.ridge)||0, e = parseFloat(s.eave)||0, h = parseFloat(s.height)||0, fold = parseFloat(s.eaveFold)||0;
+  if (cov <= 0 || (r <= 0 && e <= 0)) return null;
+  const maxW = Math.max(r, e), totalP = Math.ceil(maxW / cov), data = [];
+  const hDiff = Math.abs(r - e), slope = hDiff > 0 ? h / hDiff : 0;
 
-      const minRE = Math.min(r, e);
-      const flatStart = (maxW - minRE) / 2;
-      const flatEnd = flatStart + minRE;
-      const bothSlope = flatStart > 0 ? h / flatStart : 0;
+  const minRE = Math.min(r, e);
+  const flatStart = (maxW - minRE) / 2;
+  const flatEnd = flatStart + minRE;
+  const bothSlope = flatStart > 0 ? h / flatStart : 0;
 
-      for (let i = 0; i < totalP; i++) {
-        let startX, endX;
-        if (s.config === 'left') { startX = maxW - ((i + 1) * cov); endX = maxW - (i * cov); }
-        else if (s.config === 'both') { startX = (maxW / 2) - ((totalP / 2 - i) * cov); endX = startX + cov; }
-        else { startX = i * cov; endX = (i + 1) * cov; }
+  for (let i = 0; i < totalP; i++) {
+    let startX, endX;
+    if (s.config === 'left') { startX = maxW - ((i + 1) * cov); endX = maxW - (i * cov); }
+    else if (s.config === 'both') { startX = (maxW / 2) - ((totalP / 2 - i) * cov); endX = startX + cov; }
+    else { startX = i * cov; endX = (i + 1) * cov; }
 
-        let base, isAngled = false, angleSide = null;
-        
-        if (s.config === 'both') {
-          if (endX <= flatStart) {
-            const distIntoAngle = flatStart - endX;
-            base = h - (distIntoAngle * bothSlope);
-            isAngled = true;
-            angleSide = 'left';
-          } else if (startX >= flatEnd) {
-            const distIntoAngle = startX - flatEnd;
-            base = h - (distIntoAngle * bothSlope);
-            isAngled = true;
-            angleSide = 'right';
-          } else {
-            base = h;
-          }
-          base = Math.max(0, base);
-        } else if (s.config === 'left') {
-          if (endX < (maxW - Math.min(r,e))) {
-            base = h - ((maxW - Math.min(r,e) - endX) * slope);
-            isAngled = true;
-            angleSide = 'left';
-          } else {
-            base = h;
-          }
-        } else {
-          if (startX >= Math.min(r,e)) {
-            base = h - ((startX - Math.min(r,e)) * slope);
-            isAngled = true;
-            angleSide = 'right';
-          } else {
-            base = h;
-          }
-        }
-
-        let shortSide = base;
-        if (isAngled && base < h) {
-          if (s.config === 'both') {
-            shortSide = Math.max(0, base - (cov * bothSlope));
-          } else {
-            shortSide = Math.max(0, base - (cov * slope));
-          }
-        }
-
-        if (s.hasDormer) {
-          const d = s.dormer, dR = d.left + d.width;
-          const effectiveStartX = Math.max(0, startX);
-          if (effectiveStartX >= d.left && endX <= dR) {
-            continue;
-          }
-        }
-
-        const longSide = Math.ceil(Math.max(0, base + fold));
-        const shortSideCalc = Math.ceil(Math.max(0, shortSide + fold));
-
-        data.push({ 
-          longSide: longSide, 
-          shortSide: isAngled ? shortSideCalc : longSide,
-          type: isAngled ? 'angled' : 'full',
-          angleSide: angleSide,
-          xPos: startX 
-        });
+    let baseLong, baseShort, isAngled = false, angleSide = null;
+    
+    if (s.config === 'both') {
+      if (endX <= flatStart) {
+        // Left angled section - panel slopes up from left to right
+        const distAtStart = flatStart - startX;  // outer edge (longer)
+        const distAtEnd = flatStart - endX;      // inner edge (shorter)
+        baseLong = h - (Math.max(0, distAtEnd) * bothSlope);
+        baseShort = h - (Math.max(0, distAtStart) * bothSlope);
+        isAngled = true;
+        angleSide = 'left';
+      } else if (startX >= flatEnd) {
+        // Right angled section - panel slopes down from left to right
+        const distAtStart = startX - flatEnd;    // inner edge (shorter)
+        const distAtEnd = endX - flatEnd;        // outer edge (longer)
+        baseLong = h - (Math.max(0, distAtStart) * bothSlope);
+        baseShort = h - (Math.max(0, distAtEnd) * bothSlope);
+        isAngled = true;
+        angleSide = 'right';
+      } else {
+        baseLong = h;
+        baseShort = h;
       }
-      return { panelData: data, maxW, coverage: cov };
+      baseLong = Math.max(0, baseLong);
+      baseShort = Math.max(0, baseShort);
+    } else if (s.config === 'left') {
+      const angleStart = maxW - Math.min(r,e);
+      if (startX < angleStart) {
+        baseLong = h - ((angleStart - endX) * slope);
+        baseShort = h - ((angleStart - startX) * slope);
+        baseLong = Math.max(0, baseLong);
+        baseShort = Math.max(0, baseShort);
+        isAngled = true;
+        angleSide = 'left';
+      } else {
+        baseLong = h;
+        baseShort = h;
+      }
+    } else {
+      // right config
+      const angleStart = Math.min(r,e);
+      if (endX > angleStart) {
+        baseLong = h - ((startX - angleStart) * slope);
+        baseShort = h - ((endX - angleStart) * slope);
+        baseLong = Math.max(0, baseLong);
+        baseShort = Math.max(0, baseShort);
+        isAngled = true;
+        angleSide = 'right';
+      } else {
+        baseLong = h;
+        baseShort = h;
+      }
     }
+
+    if (s.hasDormer) {
+      const d = s.dormer, dR = d.left + d.width;
+      const effectiveStartX = Math.max(0, startX);
+      if (effectiveStartX >= d.left && endX <= dR) {
+        continue;
+      }
+    }
+
+    const longSide = Math.ceil(Math.max(0, baseLong + fold));
+    const shortSide = Math.ceil(Math.max(0, baseShort + fold));
+
+    data.push({ 
+      longSide: longSide, 
+      shortSide: isAngled ? shortSide : longSide,
+      type: isAngled ? 'angled' : 'full',
+      angleSide: angleSide,
+      xPos: startX 
+    });
+  }
+  return { panelData: data, maxW, coverage: cov };
+}
     function updateSummary() {
       let grandP = 0, grandIn = 0, grandSq = 0, actualSq = 0, tRidge = 0, tEave = 0, tVal = 0, tHip = 0, tGable = 0, tEndWall = 0, tSideWall = 0, mechSq = 0;
       sections.forEach(s => {
