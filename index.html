@@ -614,10 +614,10 @@ data.push({
         const sideA = sectionA.config === 'both' ? p.sectionASide : sectionA.config;
         const sideB = sectionB.config === 'both' ? p.sectionBSide : sectionB.config;
 
-        let angledA = dataA.panelData.filter(panel => panel.type === 'angled' && panel.angleSide === sideA)
-          .sort((a, b) => b.longSide - a.longSide);
-       let angledB = dataB.panelData.filter(panel => panel.type === 'angled' && panel.angleSide === sideB)
-  .sort((a, b) => b.shortSide - a.shortSide); 
+       let angledA = dataA.panelData.filter(panel => panel.type === 'angled' && panel.angleSide === sideA)
+  .sort((a, b) => b.longSide - a.longSide);  // Longest first
+let angledB = dataB.panelData.filter(panel => panel.type === 'angled' && panel.angleSide === sideB)
+  .sort((a, b) => a.shortSide - b.shortSide);  // Shortest shortSide first (changed back)
         console.log('Section A angled panels:', angledA.map(p => ({long: p.longSide, short: p.shortSide})));
 console.log('Section B angled panels:', angledB.map(p => ({long: p.longSide, short: p.shortSide})));
 
