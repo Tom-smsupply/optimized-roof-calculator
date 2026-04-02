@@ -402,16 +402,17 @@ window.addEventListener('beforeinstallprompt', (e) => {
       }
     }
 
-    const longSide = Math.ceil(Math.max(0, baseLong + fold));
-    const shortSide = Math.ceil(Math.max(0, baseShort + fold));
+   const longSide = Math.ceil(Math.max(0, baseLong + fold));
+const dropPerPanel = Math.ceil(cov * (s.config === 'both' ? bothSlope : slope));
+const shortSide = Math.max(0, longSide - dropPerPanel);
 
-    data.push({ 
-      longSide: longSide, 
-      shortSide: isAngled ? shortSide : longSide,
-      type: isAngled ? 'angled' : 'full',
-      angleSide: angleSide,
-      xPos: startX 
-    });
+data.push({ 
+  longSide: longSide, 
+  shortSide: isAngled ? shortSide : longSide,
+  type: isAngled ? 'angled' : 'full',
+  angleSide: angleSide,
+  xPos: startX 
+});
   }
   return { panelData: data, maxW, coverage: cov };
 }
@@ -615,8 +616,8 @@ window.addEventListener('beforeinstallprompt', (e) => {
 
         let angledA = dataA.panelData.filter(panel => panel.type === 'angled' && panel.angleSide === sideA)
           .sort((a, b) => b.longSide - a.longSide);
-        let angledB = dataB.panelData.filter(panel => panel.type === 'angled' && panel.angleSide === sideB)
-          .sort((a, b) => a.shortSide - b.shortSide);
+       let angledB = dataB.panelData.filter(panel => panel.type === 'angled' && panel.angleSide === sideB)
+  .sort((a, b) => b.shortSide - a.shortSide); 
         console.log('Section A angled panels:', angledA.map(p => ({long: p.longSide, short: p.shortSide})));
 console.log('Section B angled panels:', angledB.map(p => ({long: p.longSide, short: p.shortSide})));
 
