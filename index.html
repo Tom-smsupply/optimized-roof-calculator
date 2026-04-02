@@ -810,14 +810,20 @@ console.log('Section B angled panels:', angledB.map(p => ({long: p.longSide, sho
       }
     }
 
-    function calculateHeightFromRun(id) {
-      const s = sections.find(x => x.id === id);
-      const run = parseFloat(s.run) || 0;
-      const slope = parseFloat(s.slope) || 0;
-      if (run <= 0 || slope <= 0) { s.height = 0; updateUI(id); return; }
-      const slopeFactor = Math.sqrt(1 + (slope / 12) * (slope / 12));
-      s.height = run * slopeFactor;
-      updateUI(id);
+   function calculateHeightFromRun(id) {
+  const s = sections.find(x => x.id === id);
+  const run = parseFloat(s.run) || 0;
+  const slope = parseFloat(s.slope) || 0;
+  if (run <= 0 || slope <= 0) { s.height = 0; updateUI(id); return; }
+  const slopeFactor = Math.sqrt(1 + (slope / 12) * (slope / 12));
+  s.height = run * slopeFactor;
+  
+  // Update the length input to show calculated value
+  const lengthInput = document.getElementById(`length-input-${id}`).querySelector('input');
+  lengthInput.value = Math.round(s.height);
+  
+  updateUI(id);
+}
     }
 
     function updateSlope(id, value) {
