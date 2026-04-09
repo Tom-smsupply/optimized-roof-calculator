@@ -397,8 +397,14 @@ window.addEventListener('beforeinstallprompt', (e) => {
 });
 
    function calculate(s) {
+ function calculate(s) {
   const cov = parseFloat(s.coverage)||0, r = parseFloat(s.ridge)||0, e = parseFloat(s.eave)||0, h = parseFloat(s.height)||0, fold = parseFloat(s.eaveFold)||0;
   if (cov <= 0 || (r <= 0 && e <= 0)) return null;
+  
+  // Handle shingle profile differently
+  if (s.profile === 'shingle') {
+    return calculateShingles(s);
+  }
   const maxW = Math.max(r, e), totalP = Math.ceil(maxW / cov), data = [];
   const hDiff = Math.abs(r - e), slope = hDiff > 0 ? h / hDiff : 0;
   
@@ -499,6 +505,121 @@ window.addEventListener('beforeinstallprompt', (e) => {
     }
   }
   return { panelData: data, maxW, coverage: cov };
+}
+    function calculateShingles(s) {
+  const r = parseFloat(s.ridge)||0, e = parseFloat(s.eave)||0, h = parseFloat(s.height)||0;
+  if ((r <= 0 && e <= 0) || h <= 0) return null;
+  
+  const shingleHeight = 10.625;
+  const shingleWidth = 22;
+  const maxW = Math.max(r, e);
+  const minW = Math.min(r, e);
+  const totalRows = Math.ceil(h / shingleHeight);
+  
+  // Get enabled dormers
+  let enabledDormers = [];
+  if (s.hasDormer) {
+    if (s.dormers) {
+      enabledDormers = s.dormers.filter(d => d.enabled);
+    } else if (s.dormer) {
+      enabledDormers = [s.dormer];
+    }
+  }
+  
+  let totalShingles = 0;
+  let rowData = [];
+  
+  for (let row = 0; row < totalRows; row++) {
+    const rowBottomY = row * shingleHeight;
+    const rowTopY = (row + 1) * shingleHeight;
+    const rowMidY = rowBottomY + (shingleHeight / 2);
+    
+    // Calculate width at this row's position (at the middle of the row)
+    let rowWidth;
+    const taperRatio = Math.min(1, rowMidY / h);
+    
+    if (s.config === 'both') {
+      // Width tapers equally from both sides
+      const totalTaper = maxW - minW;
+      rowWidth = maxW - (totalTaper * taperRatio);
+    } else {
+      // Width tapers from one side only
+      const totalTaper = maxW - minW;
+      rowWidth = maxW - (totalTaper * taperRatio);
+    }
+    rowWidth = Math.max(0, rowWidth);
+    
+    // Stagger pattern
+    const isStaggered = row % 2 === 1;
+    const staggerOffset = isStaggered ? 11 : 0;
+    
+    // Calculate shingles needed based on config
+    let shinglesInRow = 0;
+    
+    if (rowWidth > 0) {
+      if (s.config === 'both') {
+        // Shingles laid from center outward
+        const halfWidth = rowWidth / 2;
+        const leftEdge = -halfWidth;
+        const rightEdge = halfWidth;
+        
+        // First shingle position (accounting for stagger)
+        const firstShingleStart = -Math.ceil((halfWidth + staggerOffset) / shingleWidth) * shingleWidth + staggerOffset;
+        
+        // Count shingles that fall within the row width
+        shinglesInRow = 0;
+        for (let pos = firstShingleStart; pos < rightEdge; pos += shingleWidth) {
+          const shingleEnd = pos + shingleWidth;
+          if (shingleEnd > leftEdge && pos < rightEdge) {
+            shinglesInRow++;
+          }
+        }
+      } else {
+        // Shingles laid from one edge
+        const startPos = isStaggered ? -staggerOffset : 0;
+        
+        // Count shingles needed to cover rowWidth
+        shinglesInRow = 0;
+        for (let pos = startPos; pos < rowWidth; pos += shingleWidth) {
+          shinglesInRow++;
+        }
+      }
+    }
+    
+    // Subtract shingles for dormers
+    for (const d of enabledDormers) {
+      const dormerBottom = d.bottom;
+      const dormerTop = h - d.top;
+      
+      if (rowTopY > dormerBottom && rowBottomY < dormerTop) {
+        const shinglesInDormer = Math.floor(d.width / shingleWidth);
+        shinglesInRow = Math.max(0, shinglesInRow - shinglesInDormer);
+      }
+    }
+    
+    totalShingles += shinglesInRow;
+    rowData.push({
+      row: row,
+      y: rowBottomY,
+      width: rowWidth,
+      shingles: shinglesInRow,
+      staggered: isStaggered
+    });
+  }
+  
+  const boxes = Math.ceil(totalShingles / 30);
+  const sqFt = boxes * 48;
+  
+  return {
+    isShingle: true,
+    rowData: rowData,
+    totalShingles: totalShingles,
+    boxes: boxes,
+    sqFt: sqFt,
+    clips: totalShingles * 2,
+    maxW: maxW,
+    totalRows: totalRows
+  };
 }
     function calculateWithShortSide(s) {
   const cov = parseFloat(s.coverage)||0, r = parseFloat(s.ridge)||0, e = parseFloat(s.eave)||0, h = parseFloat(s.height)||0, fold = parseFloat(s.eaveFold)||0;
@@ -614,44 +735,85 @@ window.addEventListener('beforeinstallprompt', (e) => {
 }
     function updateSummary() {
   let grandP = 0, grandIn = 0, grandSq = 0, actualSq = 0, tRidge = 0, tEave = 0, tVal = 0, tHip = 0, tGable = 0, tEndWall = 0, tSideWall = 0, mechSq = 0;
+  let totalShingles = 0, totalShingleBoxes = 0, totalShingleSqFt = 0, totalShingleClips = 0;
+  
   sections.forEach(s => {
     const res = calculate(s);
     if (res) {
-      grandP += res.panelData.length;
-      const sIn = res.panelData.reduce((sum, p) => sum + p.len, 0); grandIn += sIn;
-      const sSq = (sIn / 12) * (res.coverage / 12); grandSq += sSq;
       const h = parseFloat(s.height)||0, r = parseFloat(s.ridge)||0, e = parseFloat(s.eave)||0;
       
-      // Calculate actual roof area (trapezoid formula)
-      if (h > 0 && (r > 0 || e > 0)) {
-        let roofArea = ((r + e) / 2) * h / 144; // convert sq inches to sq feet
+      if (res.isShingle) {
+        // Shingle calculations
+        totalShingles += res.totalShingles;
+        totalShingleBoxes += res.boxes;
+        totalShingleSqFt += res.sqFt;
+        totalShingleClips += res.clips;
         
-        // If section has dormers, subtract their area
-        if (s.hasDormer) {
-          let enabledDormers = [];
-          if (s.dormers) {
-            enabledDormers = s.dormers.filter(d => d.enabled);
-          } else if (s.dormer) {
-            enabledDormers = [s.dormer];
+        // Calculate actual roof area
+        if (h > 0 && (r > 0 || e > 0)) {
+          let roofArea = ((r + e) / 2) * h / 144;
+          
+          // Subtract dormer areas
+          if (s.hasDormer) {
+            let enabledDormers = [];
+            if (s.dormers) {
+              enabledDormers = s.dormers.filter(d => d.enabled);
+            } else if (s.dormer) {
+              enabledDormers = [s.dormer];
+            }
+            
+            enabledDormers.forEach(d => {
+              const dormerHeight = h - d.bottom - d.top;
+              if (dormerHeight > 0 && d.width > 0) {
+                if (d.isShed) {
+                  roofArea -= (d.width * dormerHeight) / 144;
+                } else {
+                  roofArea -= (d.width * dormerHeight) / 2 / 144;
+                }
+              }
+            });
           }
           
-          enabledDormers.forEach(d => {
-            const dormerHeight = h - d.bottom - d.top;
-            if (dormerHeight > 0 && d.width > 0) {
-              if (d.isShed) {
-                const dormerArea = (d.width * dormerHeight) / 144;
-                roofArea -= dormerArea;
-              } else {
-                const dormerArea = (d.width * dormerHeight) / 2 / 144;
-                roofArea -= dormerArea;
-              }
+          actualSq += roofArea;
+        }
+      } else {
+        // Regular panel calculations
+        grandP += res.panelData.length;
+        const sIn = res.panelData.reduce((sum, p) => sum + p.len, 0); grandIn += sIn;
+        const sSq = (sIn / 12) * (res.coverage / 12); grandSq += sSq;
+        
+        // Calculate actual roof area (trapezoid formula)
+        if (h > 0 && (r > 0 || e > 0)) {
+          let roofArea = ((r + e) / 2) * h / 144;
+          
+          // If section has dormers, subtract their area
+          if (s.hasDormer) {
+            let enabledDormers = [];
+            if (s.dormers) {
+              enabledDormers = s.dormers.filter(d => d.enabled);
+            } else if (s.dormer) {
+              enabledDormers = [s.dormer];
             }
-          });
+            
+            enabledDormers.forEach(d => {
+              const dormerHeight = h - d.bottom - d.top;
+              if (dormerHeight > 0 && d.width > 0) {
+                if (d.isShed) {
+                  roofArea -= (d.width * dormerHeight) / 144;
+                } else {
+                  roofArea -= (d.width * dormerHeight) / 2 / 144;
+                }
+              }
+            });
+          }
+          
+          actualSq += roofArea;
         }
         
-        actualSq += roofArea;
+        if (s.profile === 'mechanical') mechSq += sSq;
       }
       
+      // Trim calculations (same for all profiles)
       tEave += e;
       if (s.topAgainstWall) tEndWall += r; else tRidge += r;
       if (Math.abs(r-e) > 0.1 && h > 0) {
@@ -671,10 +833,11 @@ window.addEventListener('beforeinstallprompt', (e) => {
            }
          }
       }
+      
       // Gable trim - only for right/left configs, not for 'both'
       if (h > 0) {
         if (s.config === 'both') {
-          // 'both' config has no gables - the angled sides are hips/valleys, already counted above
+          // 'both' config has no gables
         } else {
           const sqW = (s.config === 'right' && s.leftAgainstWall) || (s.config === 'left' && s.rightAgainstWall);
           if (sqW) tSideWall += h; else tGable += h;
@@ -707,15 +870,25 @@ window.addEventListener('beforeinstallprompt', (e) => {
           }
         });
       }
-      
-      if (s.profile === 'mechanical') mechSq += sSq;
     }
   });
-  document.getElementById('total-panels').innerText = grandP;
+  
+  // Update panel display
+  if (totalShingles > 0 && grandP === 0) {
+    // Only shingles
+    document.getElementById('total-panels').innerText = totalShingleBoxes + ' boxes (' + totalShingleSqFt + ' sq ft)';
+  } else if (totalShingles > 0 && grandP > 0) {
+    // Mixed panels and shingles
+    document.getElementById('total-panels').innerText = grandP + ' panels + ' + totalShingleBoxes + ' boxes';
+  } else {
+    // Only panels
+    document.getElementById('total-panels').innerText = grandP;
+  }
+  
   document.getElementById('total-linear-ft').innerText = (grandIn / 12).toFixed(1);
-  document.getElementById('total-sq-ft').innerText = Math.ceil(grandSq);
+  document.getElementById('total-sq-ft').innerText = Math.ceil(grandSq + totalShingleSqFt);
   document.getElementById('actual-sq-ft').innerText = Math.ceil(actualSq);
-  document.getElementById('waste-factor').innerText = actualSq > 0 ? ((grandSq / actualSq - 1) * 100).toFixed(1) + '%' : '0%';
+  document.getElementById('waste-factor').innerText = actualSq > 0 ? (((grandSq + totalShingleSqFt) / actualSq - 1) * 100).toFixed(1) + '%' : '0%';
   document.getElementById('ridge-caps').innerText = Math.ceil(tRidge / 240);
   document.getElementById('eave-trims').innerText = Math.ceil(tEave / 120);
   document.getElementById('valley-flashing').innerText = Math.ceil(tVal);
@@ -723,11 +896,17 @@ window.addEventListener('beforeinstallprompt', (e) => {
   document.getElementById('gable-trim').innerText = Math.ceil(tGable / 120);
   document.getElementById('end-wall-flashing').innerText = Math.ceil(tEndWall / 120);
   document.getElementById('side-wall-flashing').innerText = Math.ceil(tSideWall / 120);
-  document.getElementById('total-screws').innerText = Math.ceil(mechSq > 0 ? grandSq / 1.25 : grandSq);
-  document.getElementById('clip-fasteners').innerText = Math.ceil(mechSq / 1.25);
-  document.getElementById('clips-tile').style.display = mechSq > 0 ? '' : 'none';
+  
+  // Clips/screws calculation
+  const totalClips = Math.ceil(mechSq / 1.25) + totalShingleClips;
+  const panelScrews = Math.ceil(mechSq > 0 ? grandSq / 1.25 : grandSq);
+  
+  document.getElementById('total-screws').innerText = panelScrews;
+  document.getElementById('clip-fasteners').innerText = totalClips;
+  document.getElementById('clips-tile').style.display = (mechSq > 0 || totalShingleClips > 0) ? '' : 'none';
   document.getElementById('end-wall-tile').style.display = tEndWall > 0 ? '' : 'none';
   document.getElementById('side-wall-tile').style.display = tSideWall > 0 ? '' : 'none';
+  
   updateOptimizedSummary();
 }
     function addPairing() {
@@ -965,12 +1144,118 @@ console.log('Section B angled panels:', angledB.map(p => ({long: p.longSide, sho
    function updateUI(id) {
   const s = sections.find(x => x.id === id), res = calculate(s), svg = document.getElementById(`svg-${id}`), list = document.getElementById(`list-${id}`);
   if (!res) return;
-  const w = 800, h = 300, m = 50, scale = (w-2*m)/res.maxW, hScale = (h-2*m)/(parseFloat(s.height)||1), rW = (parseFloat(s.ridge)||0)*scale, eW = (parseFloat(s.eave)||0)*scale;
-  let rX, eX;
-  if (s.config === 'left') { rX = m + (w-2*m) - rW; eX = m + (w-2*m) - eW; }
-  else if (s.config === 'right') { rX = m; eX = m; }
-  else { rX = m + (w-2*m-rW)/2; eX = m + (w-2*m-eW)/2; }
   
+  const w = 800, h = 300, m = 50;
+  const rW = (parseFloat(s.ridge)||0), eW = (parseFloat(s.eave)||0), sH = parseFloat(s.height)||1;
+  const maxW = Math.max(rW, eW);
+  const scale = (w-2*m)/maxW, hScale = (h-2*m)/sH;
+  const rWscaled = rW*scale, eWscaled = eW*scale;
+  
+  let rX, eX;
+  if (s.config === 'left') { rX = m + (w-2*m) - rWscaled; eX = m + (w-2*m) - eWscaled; }
+  else if (s.config === 'right') { rX = m; eX = m; }
+  else { rX = m + (w-2*m-rWscaled)/2; eX = m + (w-2*m-eWscaled)/2; }
+  
+  // Handle shingle profile differently
+  if (res.isShingle) {
+    // Draw shingle grid
+    let gridLines = '';
+    const shingleWidth = 22;
+    const shingleHeight = 10.625;
+    
+    // Draw horizontal row lines
+    for (let row = 0; row <= res.totalRows; row++) {
+      const y = (h-m) - (row * shingleHeight * hScale);
+      if (y >= m) {
+        gridLines += `<line x1="${eX}" y1="${y}" x2="${eX + eWscaled}" y2="${y}" stroke="#94a3b8" stroke-width="1.5" />`;
+      }
+    }
+    
+    // Draw vertical shingle lines (accounting for stagger)
+    res.rowData.forEach((rowInfo, idx) => {
+      const rowBottomY = (h-m) - (rowInfo.y * hScale);
+      const rowTopY = (h-m) - ((rowInfo.y + shingleHeight) * hScale);
+      if (rowTopY < m) return;
+      
+      const rowWidthScaled = rowInfo.width * scale;
+      let startX;
+      if (s.config === 'left') {
+        startX = m + (w-2*m) - rowWidthScaled;
+      } else if (s.config === 'both') {
+        startX = m + (w-2*m-rowWidthScaled)/2;
+      } else {
+        startX = m;
+      }
+      
+      const shinglesInRow = rowInfo.shingles;
+      const offset = rowInfo.staggered ? (11 * scale) : 0;
+
+      if (s.config === 'both') {
+        // For 'both' config, draw from center outward
+        const centerX = m + (w - 2*m) / 2;
+        const halfShingles = Math.ceil(shinglesInRow / 2) + 1;
+        
+        for (let col = -halfShingles; col <= halfShingles; col++) {
+          let x = centerX + (col * shingleWidth * scale) + offset;
+          gridLines += `<line x1="${x}" y1="${rowBottomY}" x2="${x}" y2="${rowTopY}" stroke="#94a3b8" stroke-width="1" />`;
+        }
+      } else {
+        // For left/right config, draw from startX
+        for (let col = -1; col <= shinglesInRow + 1; col++) {
+          let x = startX + (col * shingleWidth * scale) + offset;
+          gridLines += `<line x1="${x}" y1="${rowBottomY}" x2="${x}" y2="${rowTopY}" stroke="#94a3b8" stroke-width="1" />`;
+        }
+      }
+    });
+    
+    // Draw dormers
+    let dSvg = '';
+    if (s.hasDormer) {
+      let enabledDormers = [];
+      if (s.dormers) {
+        enabledDormers = s.dormers.filter(d => d.enabled);
+      } else if (s.dormer) {
+        enabledDormers = [s.dormer];
+      }
+      
+      enabledDormers.forEach(d => {
+        let dX = m + (d.left * scale);
+        if (s.config === 'both') dX = m + (w-2*m-maxW*scale)/2 + (d.left * scale);
+        let dY = (h-m) - d.bottom*hScale, dW = d.width*scale;
+        
+        if (d.isShed) {
+          let dTopY = m + d.top*hScale;
+          dSvg += `<rect x="${dX}" y="${dTopY}" width="${dW}" height="${dY - dTopY}" fill="white" fill-opacity="0.4" stroke="red" stroke-width="2" stroke-dasharray="4"/>`;
+        } else {
+          dSvg += `<polygon points="${dX},${dY} ${dX+dW},${dY} ${dX+dW/2},${m+d.top*hScale}" fill="white" fill-opacity="0.4" stroke="red" stroke-width="2" stroke-dasharray="4"/>`;
+        }
+      });
+    }
+    
+    // Draw roof shape and grid with clipping
+    svg.innerHTML = `
+      <defs>
+        <clipPath id="roof-clip-${id}">
+          <polygon points="${eX},${h-m} ${eX+eWscaled},${h-m} ${rX+rWscaled},${m} ${rX},${m}"/>
+        </clipPath>
+      </defs>
+      <polygon points="${eX},${h-m} ${eX+eWscaled},${h-m} ${rX+rWscaled},${m} ${rX},${m}" fill="#ecfdf5" stroke="#059669" stroke-width="2"/>
+      <g clip-path="url(#roof-clip-${id})">${gridLines}</g>
+      ${dSvg}`;
+    
+    // Shingle summary list
+    list.innerHTML = `<table class="w-full text-xs"><thead><tr class="bg-slate-50 border-b"><th class="p-2 text-left">Item</th><th class="p-2 text-left">Qty</th></tr></thead><tbody>
+      <tr class="border-b"><td class="p-2 font-bold">Shingles</td><td class="p-2 font-bold">${res.totalShingles}</td></tr>
+      <tr class="border-b"><td class="p-2 font-bold">Boxes</td><td class="p-2 font-bold">${res.boxes} (${res.sqFt} sq ft)</td></tr>
+      <tr class="border-b"><td class="p-2 font-bold">Clips</td><td class="p-2 font-bold">${res.clips}</td></tr>
+      </tbody></table>`;
+    
+    updateSummary();
+    saveToStorage();
+    return;
+  }
+  
+  // Regular panel logic
   let pLines = '', pLabels = '', pStep = res.coverage * scale;
 
   // First pass: draw panel lines and collect panel data with positions
@@ -1065,7 +1350,7 @@ console.log('Section B angled panels:', angledB.map(p => ({long: p.longSide, sho
     });
   }
   
-  svg.innerHTML = `<polygon points="${eX},${h-m} ${eX+eW},${h-m} ${rX+rW},${m} ${rX},${m}" fill="#ecfdf5" stroke="#059669" stroke-width="2"/>${pLines}${dSvg}${pLabels}`;
+  svg.innerHTML = `<polygon points="${eX},${h-m} ${eX+eWscaled},${h-m} ${rX+rWscaled},${m} ${rX},${m}" fill="#ecfdf5" stroke="#059669" stroke-width="2"/>${pLines}${dSvg}${pLabels}`;
   
   let summaryMap = [];
   res.panelData.forEach(p => {
@@ -1131,7 +1416,7 @@ console.log('Section B angled panels:', angledB.map(p => ({long: p.longSide, sho
 
     function addSection() {
   const nextL = String.fromCharCode(65 + sections.length);
-  const coverage = lastProfile === 'mechanical' ? 15.75 : 36;
+  const coverage = lastProfile === 'mechanical' ? 15.75 : (lastProfile === 'shingle' ? 22 : 36);
   const s = { 
     id: Date.now(), 
     name: nextL, 
@@ -1198,13 +1483,19 @@ console.log('Section B angled panels:', angledB.map(p => ({long: p.longSide, sho
 
     function updateVal(id, f, val) { sections.find(x => x.id === id)[f] = val; updateUI(id); }
     function updateProfile(id, val) {
-      const s = sections.find(x => x.id === id);
-      s.profile = val;
-      s.coverage = (val === 'mechanical') ? 15.75 : 36;
-      lastProfile = val;
-      document.getElementById(`cov-display-${id}`).innerText = s.coverage + '" Coverage';
-      updateUI(id);
-    }
+  const s = sections.find(x => x.id === id);
+  s.profile = val;
+  lastProfile = val;
+  if (val === 'mechanical') {
+    s.coverage = 15.75;
+  } else if (val === 'shingle') {
+    s.coverage = 22;
+  } else {
+    s.coverage = 36;
+  }
+  document.getElementById(`cov-display-${id}`).innerText = val === 'shingle' ? '10.625" x 22"' : s.coverage + '" Coverage';
+  updateUI(id);
+}
     function toggleDormerFields(num) {
   const enabled = document.getElementById(`m-dormer-${num}-enabled`).checked;
   const fields = document.getElementById(`m-dormer-${num}-fields`);
@@ -1306,7 +1597,7 @@ function saveDormerData() {
         <div><label class="text-[10px] font-black uppercase text-slate-400">Eave (In)</label><input type="number" class="input-field" value="${s.eave||''}" oninput="updateVal(${s.id}, 'eave', parseFloat(this.value))"></div>
         <div id="length-input-${s.id}"><label class="text-[10px] font-black uppercase text-slate-400">Length (In)</label><input type="number" class="input-field" value="${s.height||''}" oninput="updateVal(${s.id}, 'height', parseFloat(this.value)); updateHeightMode(${s.id}, 'direct')" placeholder="Slope length"></div>
         <div id="slope-input-${s.id}"><label class="text-[10px] font-black uppercase text-slate-400">Slope</label><div class="flex items-center gap-1"><input type="number" class="input-field flex-1" value="${s.slope||6}" oninput="updateSlope(${s.id}, this.value)" placeholder="Rise" min="0" step="0.1"><span class="text-slate-400 font-bold text-sm">/12</span></div></div>
-        <div><label class="text-[10px] font-black uppercase text-slate-400">Profile</label><select class="input-field" onchange="updateProfile(${s.id}, this.value)"><option value="tuff" ${s.profile==='tuff'?'selected':''}>Tuff (36")</option><option value="mechanical" ${s.profile==='mechanical'?'selected':''}>Mech (15.75")</option><option value="diamond" ${s.profile==='diamond'?'selected':''}>Diamond (36")</option></select><p id="cov-display-${s.id}" class="text-[9px] mt-1 text-slate-500 font-bold">${s.coverage}" Coverage</p></div>
+        <div><label class="text-[10px] font-black uppercase text-slate-400">Profile</label><select class="input-field" onchange="updateProfile(${s.id}, this.value)"><option value="tuff" ${s.profile==='tuff'?'selected':''}>Tuff (36")</option><option value="mechanical" ${s.profile==='mechanical'?'selected':''}>Mech (15.75")</option><option value="diamond" ${s.profile==='diamond'?'selected':''}>Diamond (36")</option><option value="shingle" ${s.profile==='shingle'?'selected':''}>HF Shingle (22")</option></select><p id="cov-display-${s.id}" class="text-[9px] mt-1 text-slate-500 font-bold">${s.coverage}" Coverage</p></div>
         <div><label class="text-[10px] font-black uppercase text-slate-400">Fold (In)</label><input type="number" class="input-field" value="${s.eaveFold||''}" oninput="updateVal(${s.id}, 'eaveFold', parseFloat(this.value))"></div>
       </div>
       <div class="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4 no-print">
