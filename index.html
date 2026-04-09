@@ -532,6 +532,9 @@ window.addEventListener('beforeinstallprompt', (e) => {
     const rowBottomY = row * shingleHeight;
     const rowTopY = Math.min((row + 1) * shingleHeight, h); // Don't exceed roof height
     const rowMidY = (rowBottomY + rowTopY) / 2; // Mid point of actual row
+     // Calculate width at this row's position (at the middle of the row)
+    let rowWidth;
+    const taperRatio = Math.min(1, rowMidY / h);
     
     // Calculate width at this row's position (at the middle of the row)
     let rowWidth;
