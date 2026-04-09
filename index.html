@@ -505,7 +505,7 @@ window.addEventListener('beforeinstallprompt', (e) => {
   }
   return { panelData: data, maxW, coverage: cov };
 }
-    function calculateShingles(s) {
+  function calculateShingles(s) {
   const r = parseFloat(s.ridge)||0, e = parseFloat(s.eave)||0, h = parseFloat(s.height)||0;
   if ((r <= 0 && e <= 0) || h <= 0) return null;
   
@@ -530,19 +530,17 @@ window.addEventListener('beforeinstallprompt', (e) => {
   
   for (let row = 0; row < totalRows; row++) {
     const rowBottomY = row * shingleHeight;
-    const rowTopY = Math.min((row + 1) * shingleHeight, h); // Don't exceed roof height
-    const rowMidY = (rowBottomY + rowTopY) / 2; // Mid point of actual row
+    const rowTopY = Math.min((row + 1) * shingleHeight, h);
+    const rowMidY = (rowBottomY + rowTopY) / 2;
     
     // Calculate width at this row's position (at the middle of the row)
     let rowWidth;
     const taperRatio = Math.min(1, rowMidY / h);
     
     if (s.config === 'both') {
-      // Width tapers equally from both sides
       const totalTaper = maxW - minW;
       rowWidth = maxW - (totalTaper * taperRatio);
     } else {
-      // Width tapers from one side only
       const totalTaper = maxW - minW;
       rowWidth = maxW - (totalTaper * taperRatio);
     }
@@ -552,8 +550,12 @@ window.addEventListener('beforeinstallprompt', (e) => {
     const isStaggered = row % 2 === 1;
     const staggerOffset = isStaggered ? 11 : 0;
     
-    // Calculate shingles needed based on config
+    // Calculate shingles needed and track partial widths at edges
     let shinglesInRow = 0;
+    let leftPartialWidth = 0;  // How much of the leftmost shingle is used
+    let rightPartialWidth = 0; // How much of the rightmost shingle is used
+    let leftOffcut = 0;
+    let rightOffcut = 0;
     
     if (rowWidth > 0) {
       if (s.config === 'both') {
@@ -565,22 +567,73 @@ window.addEventListener('beforeinstallprompt', (e) => {
         // First shingle position (accounting for stagger)
         const firstShingleStart = -Math.ceil((halfWidth + staggerOffset) / shingleWidth) * shingleWidth + staggerOffset;
         
-        // Count shingles that fall within the row width
+        let firstShingleInRow = null;
+        let lastShingleInRow = null;
+        
         shinglesInRow = 0;
         for (let pos = firstShingleStart; pos < rightEdge; pos += shingleWidth) {
           const shingleEnd = pos + shingleWidth;
           if (shingleEnd > leftEdge && pos < rightEdge) {
             shinglesInRow++;
+            if (firstShingleInRow === null) {
+              firstShingleInRow = { start: pos, end: shingleEnd };
+            }
+            lastShingleInRow = { start: pos, end: shingleEnd };
           }
         }
+        
+        // Calculate partial widths at edges
+        if (firstShingleInRow) {
+          // Left edge: how much of the first shingle is actually used
+          const usedStart = Math.max(leftEdge, firstShingleInRow.start);
+          const usedEnd = Math.min(rightEdge, firstShingleInRow.end);
+          leftPartialWidth = usedEnd - usedStart;
+          if (leftPartialWidth < shingleWidth) {
+            leftOffcut = shingleWidth - leftPartialWidth;
+          }
+        }
+        
+        if (lastShingleInRow) {
+          // Right edge: how much of the last shingle is actually used
+          const usedStart = Math.max(leftEdge, lastShingleInRow.start);
+          const usedEnd = Math.min(rightEdge, lastShingleInRow.end);
+          rightPartialWidth = usedEnd - usedStart;
+          if (rightPartialWidth < shingleWidth) {
+            rightOffcut = shingleWidth - rightPartialWidth;
+          }
+        }
+        
       } else {
-        // Shingles laid from one edge
+        // Shingles laid from one edge (left or right config)
         const startPos = isStaggered ? -staggerOffset : 0;
         
-        // Count shingles needed to cover rowWidth
+        let firstShingleInRow = null;
+        let lastShingleInRow = null;
+        
         shinglesInRow = 0;
         for (let pos = startPos; pos < rowWidth; pos += shingleWidth) {
           shinglesInRow++;
+          if (firstShingleInRow === null) {
+            firstShingleInRow = { start: pos, end: pos + shingleWidth };
+          }
+          lastShingleInRow = { start: pos, end: pos + shingleWidth };
+        }
+        
+        // For left/right configs, the angled edge has partial shingles
+        if (s.config === 'right' && lastShingleInRow) {
+          // Right config: right edge is angled (at rowWidth)
+          rightPartialWidth = rowWidth - lastShingleInRow.start;
+          if (rightPartialWidth < shingleWidth && rightPartialWidth > 0) {
+            rightOffcut = shingleWidth - rightPartialWidth;
+          }
+        } else if (s.config === 'left' && firstShingleInRow) {
+          // Left config: left edge is angled
+          if (firstShingleInRow.start < 0) {
+            leftPartialWidth = firstShingleInRow.end; // portion inside the roof
+            if (leftPartialWidth < shingleWidth && leftPartialWidth > 0) {
+              leftOffcut = shingleWidth - leftPartialWidth;
+            }
+          }
         }
       }
     }
@@ -602,7 +655,11 @@ window.addEventListener('beforeinstallprompt', (e) => {
       y: rowBottomY,
       width: rowWidth,
       shingles: shinglesInRow,
-      staggered: isStaggered
+      staggered: isStaggered,
+      leftPartialWidth: leftPartialWidth,
+      rightPartialWidth: rightPartialWidth,
+      leftOffcut: leftOffcut,
+      rightOffcut: rightOffcut
     });
   }
   
@@ -618,6 +675,100 @@ window.addEventListener('beforeinstallprompt', (e) => {
     clips: totalShingles * 2,
     maxW: maxW,
     totalRows: totalRows
+  };
+}
+    function calculateOptimizedShingles() {
+  // Collect all shingle sections
+  const shingleSections = sections.filter(s => s.profile === 'shingle');
+  if (shingleSections.length === 0) return { totalShingles: 0, savedShingles: 0, boxes: 0, sqFt: 0, clips: 0 };
+  
+  let totalStandardShingles = 0;
+  let totalSavedShingles = 0;
+  
+  // For "both" config sections, optimize within the section (left offcuts → right needs)
+  shingleSections.filter(s => s.config === 'both').forEach(s => {
+    const res = calculateShingles(s);
+    if (!res) return;
+    
+    totalStandardShingles += res.totalShingles;
+    
+    // For each row, check if left offcut can fill right need (or vice versa)
+    res.rowData.forEach(row => {
+      // Left offcut can fill right partial if offcut >= right partial width
+      if (row.leftOffcut > 0 && row.rightPartialWidth > 0 && row.leftOffcut >= row.rightPartialWidth) {
+        totalSavedShingles++;
+      }
+      // Right offcut can fill left partial if offcut >= left partial width
+      else if (row.rightOffcut > 0 && row.leftPartialWidth > 0 && row.rightOffcut >= row.leftPartialWidth) {
+        totalSavedShingles++;
+      }
+    });
+  });
+  
+  // For left/right config sections, try to pair them
+  const leftSections = shingleSections.filter(s => s.config === 'left');
+  const rightSections = shingleSections.filter(s => s.config === 'right');
+  
+  // Add unpaired sections to total
+  [...leftSections, ...rightSections].forEach(s => {
+    const res = calculateShingles(s);
+    if (res) totalStandardShingles += res.totalShingles;
+  });
+  
+  // Try to match left sections with right sections based on pairings
+  pairings.forEach(p => {
+    if (!p.sectionA || !p.sectionB) return;
+    const sectionA = sections.find(s => s.id == p.sectionA);
+    const sectionB = sections.find(s => s.id == p.sectionB);
+    if (!sectionA || !sectionB) return;
+    if (sectionA.profile !== 'shingle' || sectionB.profile !== 'shingle') return;
+    
+    // Need one left and one right
+    let leftSection, rightSection;
+    if (sectionA.config === 'left' && sectionB.config === 'right') {
+      leftSection = sectionA;
+      rightSection = sectionB;
+    } else if (sectionA.config === 'right' && sectionB.config === 'left') {
+      leftSection = sectionB;
+      rightSection = sectionA;
+    } else {
+      return; // Can't pair these
+    }
+    
+    const leftRes = calculateShingles(leftSection);
+    const rightRes = calculateShingles(rightSection);
+    if (!leftRes || !rightRes) return;
+    
+    // Match rows - use the minimum number of rows between the two sections
+    const minRows = Math.min(leftRes.rowData.length, rightRes.rowData.length);
+    
+    for (let i = 0; i < minRows; i++) {
+      const leftRow = leftRes.rowData[i];
+      const rightRow = rightRes.rowData[i];
+      
+      // Left section's left offcut can fill right section's right partial
+      if (leftRow.leftOffcut > 0 && rightRow.rightPartialWidth > 0 && leftRow.leftOffcut >= rightRow.rightPartialWidth) {
+        totalSavedShingles++;
+      }
+      
+      // Right section's right offcut can fill left section's left partial  
+      if (rightRow.rightOffcut > 0 && leftRow.leftPartialWidth > 0 && rightRow.rightOffcut >= leftRow.leftPartialWidth) {
+        totalSavedShingles++;
+      }
+    }
+  });
+  
+  const optimizedShingles = totalStandardShingles - totalSavedShingles;
+  const boxes = Math.ceil(optimizedShingles / 30);
+  const sqFt = boxes * 48;
+  
+  return {
+    totalShingles: optimizedShingles,
+    standardShingles: totalStandardShingles,
+    savedShingles: totalSavedShingles,
+    boxes: boxes,
+    sqFt: sqFt,
+    clips: optimizedShingles * 2
   };
 }
     function calculateWithShortSide(s) {
@@ -1082,17 +1233,13 @@ function updateOptimizedSummary() {
     }
   });
 
-  // Calculate shingle totals separately
-  let shingleBoxes = 0, shingleSqFt = 0, shingleClips = 0, totalShingles = 0;
-  sections.forEach(s => {
-    const res = calculate(s);
-    if (res && res.isShingle) {
-      shingleBoxes += res.boxes;
-      shingleSqFt += res.sqFt;
-      shingleClips += res.clips;
-      totalShingles += res.totalShingles;
-    }
-  });
+  // Calculate optimized shingle totals
+  const shingleOpt = calculateOptimizedShingles();
+  const shingleBoxes = shingleOpt.boxes;
+  const shingleSqFt = shingleOpt.sqFt;
+  const shingleClips = shingleOpt.clips;
+  const totalShingles = shingleOpt.totalShingles;
+  const shinglesSaved = shingleOpt.savedShingles;
 
   const optTotalPanels = combinedPanels.length + unpairedPanels.length;
   const optTotalLinearIn = combinedPanels.reduce((sum, p) => sum + p.length, 0) + unpairedPanels.reduce((sum, p) => sum + p.length, 0);
@@ -1115,26 +1262,40 @@ function updateOptimizedSummary() {
   document.getElementById('opt-total-linear-ft').innerText = optTotalLinearFt.toFixed(1);
   document.getElementById('opt-total-sq-ft').innerText = Math.ceil(optTotalSqFt);
 
-  const panelsSaved = stdPanels - optTotalPanels;
+ // Calculate actual savings
+  let panelsSaved = 0;
+  if (optTotalPanels > 0) {
+    panelsSaved = stdPanels - optTotalPanels;
+  }
+  
+  // For shingles, show shingles saved instead
+  const shingleBoxesSaved = shinglesSaved > 0 ? Math.floor(shinglesSaved / 30) : 0; 
   const linearSaved = stdLinearFt - optTotalLinearFt;
   const sqftSaved = stdSqFt - optTotalSqFt;
   const wastePercent = actualSqFt > 0 ? ((optTotalSqFt / actualSqFt - 1) * 100) : 0;
 
-  document.getElementById('opt-panels-saved').innerText = panelsSaved > 0 ? `↓ ${panelsSaved} fewer panels` : '';
+  if (panelsSaved > 0) {
+    document.getElementById('opt-panels-saved').innerText = `↓ ${panelsSaved} fewer panels`;
+  } else if (shinglesSaved > 0) {
+    document.getElementById('opt-panels-saved').innerText = `↓ ${shinglesSaved} shingles saved`;
+  } else {
+    document.getElementById('opt-panels-saved').innerText = '';
+  }
   document.getElementById('opt-linear-saved').innerText = linearSaved > 0 ? `↓ ${linearSaved.toFixed(1)} ft saved` : '';
   document.getElementById('opt-sqft-saved').innerText = sqftSaved > 0 ? `↓ ${Math.ceil(sqftSaved)} sq ft saved` : '';
   document.getElementById('opt-waste-reduction').innerText = wastePercent > 0 ? `${wastePercent.toFixed(1)}%` : '0%';
 
-  renderOptimizedCutList(combinedPanels, unpairedPanels, shingleBoxes, totalShingles, shingleSqFt);
+  renderOptimizedCutList(combinedPanels, unpairedPanels, shingleBoxes, totalShingles, shingleSqFt, shinglesSaved);
 }
     
-   function renderOptimizedCutList(combinedPanels, unpairedPanels, shingleBoxes, totalShingles, shingleSqFt) {
+  function renderOptimizedCutList(combinedPanels, unpairedPanels, shingleBoxes, totalShingles, shingleSqFt, shinglesSaved) {
   const container = document.getElementById('optimized-cut-list');
   shingleBoxes = shingleBoxes || 0;
   totalShingles = totalShingles || 0;
   shingleSqFt = shingleSqFt || 0;
+  shinglesSaved = shinglesSaved || 0;
   
-  if (combinedPanels.length === 0 && unpairedPanels.length === 0 && shingleBoxes === 0) {
+  if (combinedPanels.length === 0 && unpairedPanels.length === 0 && shingleBoxes === 0 && totalShingles === 0) {
     container.innerHTML = '<p class="text-emerald-200 italic">Add section pairings above to see optimized cuts</p>';
     return;
   }
@@ -1155,10 +1316,13 @@ function updateOptimizedSummary() {
   let html = '';
   
   // Shingles section
-  if (shingleBoxes > 0) {
+  if (shingleBoxes > 0 || totalShingles > 0) {
     html += '<div class="mb-4"><h4 class="font-semibold text-emerald-100 mb-2">Steel Shingles</h4><div class="grid gap-2">';
-    html += `<div class="bg-white/20 rounded px-3 py-2 flex justify-between items-center"><span><strong>${totalShingles}</strong> shingles = <strong>${shingleBoxes}</strong> boxes (${shingleSqFt} sq ft)</span></div>`;
-    html += '</div></div>';
+    html += `<div class="bg-white/20 rounded px-3 py-2"><span><strong>${totalShingles}</strong> shingles = <strong>${shingleBoxes}</strong> boxes (${shingleSqFt} sq ft)</span>`;
+    if (shinglesSaved > 0) {
+      html += `<span class="ml-2 text-emerald-200">↓ ${shinglesSaved} shingles saved from reused offcuts</span>`;
+    }
+    html += `</div></div></div>`;
   }
   
   if (Object.keys(combinedGroups).length > 0) {
