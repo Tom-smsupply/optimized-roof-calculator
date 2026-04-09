@@ -532,9 +532,6 @@ window.addEventListener('beforeinstallprompt', (e) => {
     const rowBottomY = row * shingleHeight;
     const rowTopY = Math.min((row + 1) * shingleHeight, h); // Don't exceed roof height
     const rowMidY = (rowBottomY + rowTopY) / 2; // Mid point of actual row
-     // Calculate width at this row's position (at the middle of the row)
-    let rowWidth;
-    const taperRatio = Math.min(1, rowMidY / h);
     
     // Calculate width at this row's position (at the middle of the row)
     let rowWidth;
@@ -995,46 +992,191 @@ window.addEventListener('beforeinstallprompt', (e) => {
       }).join('');
       lucide.createIcons();
     }
+function updateOptimizedSummary() {
+  const maxLength = parseFloat(document.getElementById('max-panel-length').value) || 360;
+  const stdPanels = parseInt(document.getElementById('total-panels').innerText) || 0;
+  const stdLinearFt = parseFloat(document.getElementById('total-linear-ft').innerText) || 0;
+  const stdSqFt = parseInt(document.getElementById('total-sq-ft').innerText) || 0;
+  const actualSqFt = parseInt(document.getElementById('actual-sq-ft').innerText) || 0;
 
+  let processedSectionIds = new Set();
+  let combinedPanels = [];
+  let unpairedPanels = [];
+
+  pairings.forEach(p => {
+    if (!p.sectionA || !p.sectionB) return;
+    const sectionA = sections.find(s => s.id == p.sectionA);
+    const sectionB = sections.find(s => s.id == p.sectionB);
+    if (!sectionA || !sectionB) return;
     
-    function renderOptimizedCutList(combinedPanels, unpairedPanels) {
-      const container = document.getElementById('optimized-cut-list');
-      if (combinedPanels.length === 0 && unpairedPanels.length === 0) {
-        container.innerHTML = '<p class="text-emerald-200 italic">Add section pairings above to see optimized cuts</p>';
-        return;
-      }
+    // Skip shingle sections for pairing optimization
+    if (sectionA.profile === 'shingle' || sectionB.profile === 'shingle') return;
 
-      const combinedGroups = {};
-      combinedPanels.forEach(p => {
-        const key = `${p.length}-${p.cutA}-${p.cutB}`;
-        if (!combinedGroups[key]) combinedGroups[key] = { ...p, qty: 0 };
-        combinedGroups[key].qty++;
-      });
+    const dataA = calculateWithShortSide(sectionA);
+    const dataB = calculateWithShortSide(sectionB);
+    if (!dataA || !dataB) return;
 
-      const unpairedGroups = {};
-      unpairedPanels.forEach(p => {
-        if (!unpairedGroups[p.length]) unpairedGroups[p.length] = { length: p.length, qty: 0 };
-        unpairedGroups[p.length].qty++;
-      });
+    const sideA = sectionA.config === 'both' ? p.sectionASide : sectionA.config;
+    const sideB = sectionB.config === 'both' ? p.sectionBSide : sectionB.config;
 
-      let html = '';
-      if (Object.keys(combinedGroups).length > 0) {
-        html += '<div class="mb-4"><h4 class="font-semibold text-emerald-100 mb-2">Combined Panels (cut at angle)</h4><div class="grid gap-2">';
-        Object.values(combinedGroups).sort((a, b) => b.length - a.length).forEach(g => {
-          html += `<div class="bg-white/20 rounded px-3 py-2 flex justify-between items-center"><span><strong>${g.qty}×</strong> ${g.length}" <span class="text-emerald-200">(cuts to ${g.cutA}" + ${g.cutB}")</span></span></div>`;
+    let angledA = dataA.panelData.filter(panel => panel.type === 'angled' && panel.angleSide === sideA)
+      .sort((a, b) => b.longSide - a.longSide);
+    let angledB = dataB.panelData.filter(panel => panel.type === 'angled' && panel.angleSide === sideB)
+      .sort((a, b) => a.shortSide - b.shortSide);
+
+    const pairCount = Math.min(angledA.length, angledB.length);
+    for (let i = 0; i < pairCount; i++) {
+      const panelA = angledA[i];
+      const panelB = angledB[i];
+      const combinedLength = panelA.longSide + panelB.shortSide;
+      
+      if (combinedLength <= maxLength) {
+        combinedPanels.push({
+          length: combinedLength,
+          cutA: panelA.longSide,
+          cutB: panelB.shortSide,
+          sectionA: sectionA.name,
+          sectionB: sectionB.name
         });
-        html += '</div></div>';
+      } else {
+        unpairedPanels.push({ length: panelA.longSide, section: sectionA.name });
+        unpairedPanels.push({ length: panelB.longSide, section: sectionB.name });
       }
-      if (Object.keys(unpairedGroups).length > 0) {
-        html += '<div><h4 class="font-semibold text-emerald-100 mb-2">Standard Panels</h4><div class="grid gap-2">';
-        Object.values(unpairedGroups).sort((a, b) => b.length - a.length).forEach(g => {
-          html += `<div class="bg-white/10 rounded px-3 py-2 flex justify-between items-center"><span><strong>${g.qty}×</strong> ${g.length}"</span></div>`;
-        });
-        html += '</div></div>';
-      }
-      container.innerHTML = html;
     }
 
+    for (let i = pairCount; i < angledA.length; i++) {
+      unpairedPanels.push({ length: angledA[i].longSide, section: sectionA.name });
+    }
+    for (let i = pairCount; i < angledB.length; i++) {
+      unpairedPanels.push({ length: angledB[i].longSide, section: sectionB.name });
+    }
+
+    processedSectionIds.add(`${sectionA.id}-${sideA}`);
+    processedSectionIds.add(`${sectionB.id}-${sideB}`);
+
+    if (!processedSectionIds.has(`${sectionA.id}-full`)) {
+      dataA.panelData.filter(panel => panel.type === 'full').forEach(panel => {
+        unpairedPanels.push({ length: panel.longSide, section: sectionA.name });
+      });
+      processedSectionIds.add(`${sectionA.id}-full`);
+    }
+    if (!processedSectionIds.has(`${sectionB.id}-full`)) {
+      dataB.panelData.filter(panel => panel.type === 'full').forEach(panel => {
+        unpairedPanels.push({ length: panel.longSide, section: sectionB.name });
+      });
+      processedSectionIds.add(`${sectionB.id}-full`);
+    }
+  });
+
+  sections.forEach(s => {
+    const hasPairing = pairings.some(p => p.sectionA == s.id || p.sectionB == s.id);
+    if (hasPairing) return;
+    const res = calculate(s);
+    if (res) {
+      if (res.isShingle) {
+        return;
+      }
+      res.panelData.forEach(panel => {
+        unpairedPanels.push({ length: panel.len, section: s.name });
+      });
+    }
+  });
+
+  // Calculate shingle totals separately
+  let shingleBoxes = 0, shingleSqFt = 0, shingleClips = 0, totalShingles = 0;
+  sections.forEach(s => {
+    const res = calculate(s);
+    if (res && res.isShingle) {
+      shingleBoxes += res.boxes;
+      shingleSqFt += res.sqFt;
+      shingleClips += res.clips;
+      totalShingles += res.totalShingles;
+    }
+  });
+
+  const optTotalPanels = combinedPanels.length + unpairedPanels.length;
+  const optTotalLinearIn = combinedPanels.reduce((sum, p) => sum + p.length, 0) + unpairedPanels.reduce((sum, p) => sum + p.length, 0);
+  const optTotalLinearFt = optTotalLinearIn / 12;
+  const nonShingleSections = sections.filter(s => s.profile !== 'shingle');
+  const avgCoverage = nonShingleSections.length > 0 
+    ? nonShingleSections.reduce((sum, s) => sum + parseFloat(s.coverage || 36), 0) / nonShingleSections.length 
+    : 36;
+  const optTotalSqFt = (optTotalLinearIn / 12) * (avgCoverage / 12) + shingleSqFt;
+
+  // Update display
+  if (shingleBoxes > 0 && optTotalPanels === 0) {
+    document.getElementById('opt-total-panels').innerText = shingleBoxes + ' boxes (' + shingleSqFt + ' sq ft)';
+  } else if (shingleBoxes > 0) {
+    document.getElementById('opt-total-panels').innerText = optTotalPanels + ' panels + ' + shingleBoxes + ' boxes';
+  } else {
+    document.getElementById('opt-total-panels').innerText = optTotalPanels;
+  }
+
+  document.getElementById('opt-total-linear-ft').innerText = optTotalLinearFt.toFixed(1);
+  document.getElementById('opt-total-sq-ft').innerText = Math.ceil(optTotalSqFt);
+
+  const panelsSaved = stdPanels - optTotalPanels;
+  const linearSaved = stdLinearFt - optTotalLinearFt;
+  const sqftSaved = stdSqFt - optTotalSqFt;
+  const wastePercent = actualSqFt > 0 ? ((optTotalSqFt / actualSqFt - 1) * 100) : 0;
+
+  document.getElementById('opt-panels-saved').innerText = panelsSaved > 0 ? `↓ ${panelsSaved} fewer panels` : '';
+  document.getElementById('opt-linear-saved').innerText = linearSaved > 0 ? `↓ ${linearSaved.toFixed(1)} ft saved` : '';
+  document.getElementById('opt-sqft-saved').innerText = sqftSaved > 0 ? `↓ ${Math.ceil(sqftSaved)} sq ft saved` : '';
+  document.getElementById('opt-waste-reduction').innerText = wastePercent > 0 ? `${wastePercent.toFixed(1)}%` : '0%';
+
+  renderOptimizedCutList(combinedPanels, unpairedPanels, shingleBoxes, totalShingles, shingleSqFt);
+}
+    
+   function renderOptimizedCutList(combinedPanels, unpairedPanels, shingleBoxes, totalShingles, shingleSqFt) {
+  const container = document.getElementById('optimized-cut-list');
+  shingleBoxes = shingleBoxes || 0;
+  totalShingles = totalShingles || 0;
+  shingleSqFt = shingleSqFt || 0;
+  
+  if (combinedPanels.length === 0 && unpairedPanels.length === 0 && shingleBoxes === 0) {
+    container.innerHTML = '<p class="text-emerald-200 italic">Add section pairings above to see optimized cuts</p>';
+    return;
+  }
+
+  const combinedGroups = {};
+  combinedPanels.forEach(p => {
+    const key = `${p.length}-${p.cutA}-${p.cutB}`;
+    if (!combinedGroups[key]) combinedGroups[key] = { ...p, qty: 0 };
+    combinedGroups[key].qty++;
+  });
+
+  const unpairedGroups = {};
+  unpairedPanels.forEach(p => {
+    if (!unpairedGroups[p.length]) unpairedGroups[p.length] = { length: p.length, qty: 0 };
+    unpairedGroups[p.length].qty++;
+  });
+
+  let html = '';
+  
+  // Shingles section
+  if (shingleBoxes > 0) {
+    html += '<div class="mb-4"><h4 class="font-semibold text-emerald-100 mb-2">Steel Shingles</h4><div class="grid gap-2">';
+    html += `<div class="bg-white/20 rounded px-3 py-2 flex justify-between items-center"><span><strong>${totalShingles}</strong> shingles = <strong>${shingleBoxes}</strong> boxes (${shingleSqFt} sq ft)</span></div>`;
+    html += '</div></div>';
+  }
+  
+  if (Object.keys(combinedGroups).length > 0) {
+    html += '<div class="mb-4"><h4 class="font-semibold text-emerald-100 mb-2">Combined Panels (cut at angle)</h4><div class="grid gap-2">';
+    Object.values(combinedGroups).sort((a, b) => b.length - a.length).forEach(g => {
+      html += `<div class="bg-white/20 rounded px-3 py-2 flex justify-between items-center"><span><strong>${g.qty}×</strong> ${g.length}" <span class="text-emerald-200">(cuts to ${g.cutA}" + ${g.cutB}")</span></span></div>`;
+    });
+    html += '</div></div>';
+  }
+  if (Object.keys(unpairedGroups).length > 0) {
+    html += '<div><h4 class="font-semibold text-emerald-100 mb-2">Standard Panels</h4><div class="grid gap-2">';
+    Object.values(unpairedGroups).sort((a, b) => b.length - a.length).forEach(g => {
+      html += `<div class="bg-white/10 rounded px-3 py-2 flex justify-between items-center"><span><strong>${g.qty}×</strong> ${g.length}"</span></div>`;
+    });
+    html += '</div></div>';
+  }
+  container.innerHTML = html;
+}
    function updateUI(id) {
   const s = sections.find(x => x.id === id), res = calculate(s), svg = document.getElementById(`svg-${id}`), list = document.getElementById(`list-${id}`);
   if (!res) return;
