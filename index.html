@@ -530,8 +530,8 @@ window.addEventListener('beforeinstallprompt', (e) => {
   
   for (let row = 0; row < totalRows; row++) {
     const rowBottomY = row * shingleHeight;
-    const rowTopY = (row + 1) * shingleHeight;
-    const rowMidY = rowBottomY + (shingleHeight / 2);
+    const rowTopY = Math.min((row + 1) * shingleHeight, h); // Don't exceed roof height
+    const rowMidY = (rowBottomY + rowTopY) / 2; // Mid point of actual row
     
     // Calculate width at this row's position (at the middle of the row)
     let rowWidth;
@@ -993,115 +993,7 @@ window.addEventListener('beforeinstallprompt', (e) => {
       lucide.createIcons();
     }
 
-    function updateOptimizedSummary() {
-      const maxLength = parseFloat(document.getElementById('max-panel-length').value) || 360;
-      const stdPanels = parseInt(document.getElementById('total-panels').innerText) || 0;
-      const stdLinearFt = parseFloat(document.getElementById('total-linear-ft').innerText) || 0;
-      const stdSqFt = parseInt(document.getElementById('total-sq-ft').innerText) || 0;
-      const actualSqFt = parseInt(document.getElementById('actual-sq-ft').innerText) || 0;
-
-      let processedSectionIds = new Set();
-      let combinedPanels = [];
-      let unpairedPanels = [];
-
-      pairings.forEach(p => {
-        if (!p.sectionA || !p.sectionB) return;
-        const sectionA = sections.find(s => s.id == p.sectionA);
-        const sectionB = sections.find(s => s.id == p.sectionB);
-        if (!sectionA || !sectionB) return;
-
-        const dataA = calculateWithShortSide(sectionA);
-        const dataB = calculateWithShortSide(sectionB);
-        if (!dataA || !dataB) return;
-
-        const sideA = sectionA.config === 'both' ? p.sectionASide : sectionA.config;
-        const sideB = sectionB.config === 'both' ? p.sectionBSide : sectionB.config;
-
-       let angledA = dataA.panelData.filter(panel => panel.type === 'angled' && panel.angleSide === sideA)
-  .sort((a, b) => b.longSide - a.longSide);  // Longest first
-let angledB = dataB.panelData.filter(panel => panel.type === 'angled' && panel.angleSide === sideB)
-  .sort((a, b) => a.shortSide - b.shortSide);  // Shortest shortSide first (changed back)
-        console.log('Section A angled panels:', angledA.map(p => ({long: p.longSide, short: p.shortSide})));
-console.log('Section B angled panels:', angledB.map(p => ({long: p.longSide, short: p.shortSide})));
-
-        const pairCount = Math.min(angledA.length, angledB.length);
-        for (let i = 0; i < pairCount; i++) {
-          const panelA = angledA[i];
-          const panelB = angledB[i];
-          const combinedLength = panelA.longSide + panelB.shortSide;
-          
-          if (combinedLength <= maxLength) {
-            combinedPanels.push({
-              length: combinedLength,
-              cutA: panelA.longSide,
-              cutB: panelB.shortSide,
-              sectionA: sectionA.name,
-              sectionB: sectionB.name
-            });
-          } else {
-            unpairedPanels.push({ length: panelA.longSide, section: sectionA.name });
-            unpairedPanels.push({ length: panelB.longSide, section: sectionB.name });
-          }
-        }
-
-        for (let i = pairCount; i < angledA.length; i++) {
-          unpairedPanels.push({ length: angledA[i].longSide, section: sectionA.name });
-        }
-        for (let i = pairCount; i < angledB.length; i++) {
-          unpairedPanels.push({ length: angledB[i].longSide, section: sectionB.name });
-        }
-
-        processedSectionIds.add(`${sectionA.id}-${sideA}`);
-        processedSectionIds.add(`${sectionB.id}-${sideB}`);
-
-        if (!processedSectionIds.has(`${sectionA.id}-full`)) {
-          dataA.panelData.filter(panel => panel.type === 'full').forEach(panel => {
-            unpairedPanels.push({ length: panel.longSide, section: sectionA.name });
-          });
-          processedSectionIds.add(`${sectionA.id}-full`);
-        }
-        if (!processedSectionIds.has(`${sectionB.id}-full`)) {
-          dataB.panelData.filter(panel => panel.type === 'full').forEach(panel => {
-            unpairedPanels.push({ length: panel.longSide, section: sectionB.name });
-          });
-          processedSectionIds.add(`${sectionB.id}-full`);
-        }
-      });
-
-      sections.forEach(s => {
-        const hasPairing = pairings.some(p => p.sectionA == s.id || p.sectionB == s.id);
-        if (hasPairing) return;
-        const res = calculate(s);
-        if (res) {
-          res.panelData.forEach(panel => {
-            unpairedPanels.push({ length: panel.len, section: s.name });
-          });
-        }
-      });
-
-      const optTotalPanels = combinedPanels.length + unpairedPanels.length;
-      const optTotalLinearIn = combinedPanels.reduce((sum, p) => sum + p.length, 0) + unpairedPanels.reduce((sum, p) => sum + p.length, 0);
-      const optTotalLinearFt = optTotalLinearIn / 12;
-      const avgCoverage = sections.length > 0 ? sections.reduce((sum, s) => sum + parseFloat(s.coverage || 36), 0) / sections.length : 36;
-      const optTotalSqFt = (optTotalLinearIn / 12) * (avgCoverage / 12);
-
-      document.getElementById('opt-total-panels').innerText = optTotalPanels;
-      document.getElementById('opt-total-linear-ft').innerText = optTotalLinearFt.toFixed(1);
-      document.getElementById('opt-total-sq-ft').innerText = Math.ceil(optTotalSqFt);
-
-      const panelsSaved = stdPanels - optTotalPanels;
-      const linearSaved = stdLinearFt - optTotalLinearFt;
-      const sqftSaved = stdSqFt - optTotalSqFt;
-      const wastePercent = actualSqFt > 0 ? ((optTotalSqFt / actualSqFt - 1) * 100) : 0;
-
-      document.getElementById('opt-panels-saved').innerText = panelsSaved > 0 ? `↓ ${panelsSaved} fewer panels` : '';
-      document.getElementById('opt-linear-saved').innerText = linearSaved > 0 ? `↓ ${linearSaved.toFixed(1)} ft saved` : '';
-      document.getElementById('opt-sqft-saved').innerText = sqftSaved > 0 ? `↓ ${Math.ceil(sqftSaved)} sq ft saved` : '';
-      document.getElementById('opt-waste-reduction').innerText = wastePercent > 0 ? `${wastePercent.toFixed(1)}%` : '0%';
-
-      renderOptimizedCutList(combinedPanels, unpairedPanels);
-    }
-
+    
     function renderOptimizedCutList(combinedPanels, unpairedPanels) {
       const container = document.getElementById('optimized-cut-list');
       if (combinedPanels.length === 0 && unpairedPanels.length === 0) {
