@@ -396,7 +396,6 @@ window.addEventListener('beforeinstallprompt', (e) => {
   window.deferredPrompt = e;
 });
 
-   function calculate(s) {
  function calculate(s) {
   const cov = parseFloat(s.coverage)||0, r = parseFloat(s.ridge)||0, e = parseFloat(s.eave)||0, h = parseFloat(s.height)||0, fold = parseFloat(s.eaveFold)||0;
   if (cov <= 0 || (r <= 0 && e <= 0)) return null;
